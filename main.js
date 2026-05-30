@@ -361,9 +361,9 @@ const introEl = document.getElementById('intro');
 const toggleBtns = [...document.querySelectorAll('#toggles button')];
 let bodyRevealed = false, bodyMode = 'real', spinTried = false;
 const MODE_MSG = {
-  real:    "i'm a brain map. neighbours match — but that's just me being smooth, not meaning.",
+  real:    "neighbours look alike. that's me being smooth — not us being related.",
   shuffle: "shuffle me and i'm static — no brain looks like this. a fake this dumb proves nothing.",
-  spin:    "blow me back into a ball and spin me — still me, just turned. now see if we still line up. that's a fake worth beating."
+  spin:    "blow me back into a ball and spin me — still me, just misaligned. now see if we still line up. that's a fair fight."
 };
 function setMode(m) {
   bodyMode = m;
