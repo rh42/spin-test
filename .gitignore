@@ -1,0 +1,7 @@
+notes/
+.claude/
+.DS_Store
+node_modules/
+.vscode/
+*.log
+brain-export/.venv/
