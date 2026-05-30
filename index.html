@@ -250,6 +250,36 @@
     #door::before { content: "?"; }
   }
 
+  /* suppress flash-of-desktop-content before JS runs on touch devices */
+  @media (pointer: coarse) {
+    #ui { display: none; }
+    #spacer { height: 0; }
+    body { overflow: hidden; }
+  }
+
+  /* touch gate — pointer: coarse gets the orb to play with + email CTA */
+  #touch-gate {
+    display: none;
+    position: fixed; inset: 0; z-index: 5; pointer-events: none;
+    flex-direction: column; align-items: center; justify-content: flex-end;
+    padding-bottom: 13%; gap: 22px; text-align: center;
+  }
+  #touch-gate.show { display: flex; }
+  #gate-line {
+    font-family: var(--mono); font-size: 15.5px; color: var(--ink);
+    letter-spacing: .04em; line-height: 1.5; padding: 0 32px;
+    text-shadow: 0 1px 8px rgba(0,0,0,.65);   /* legible over the bright orb in landscape */
+    pointer-events: none;
+  }
+  #gate-mailto {
+    font-family: var(--mono); font-size: 13px; letter-spacing: .05em;
+    color: var(--ink); text-decoration: none;
+    padding: 13px 28px; border: 1px solid #3a3a47; border-radius: 6px;
+    background: rgba(6,6,9,.72); backdrop-filter: blur(6px);
+    pointer-events: auto;
+  }
+  #gate-mailto:active { border-color: var(--dim); }
+
   /* accessibility / SEO */
   .sr-only {
     position: absolute;
@@ -278,6 +308,12 @@
   </div>
   <div id="bk-dark"></div>
   <div id="bk-light"></div>
+
+  <div id="touch-gate">
+    <p id="gate-line">this one needs a mouse. the orb's just here to keep you company.</p>
+    <a id="gate-mailto" href="mailto:?subject=The%20Spin%20Test&body=https%3A%2F%2Frh42.github.io%2Fspin-test%2F">send it to yourself →</a>
+  </div>
+
   <div id="orb-layer"></div>
 
   <div id="ui">

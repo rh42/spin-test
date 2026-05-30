@@ -8,9 +8,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 window.scrollTo(0, 0);
 
-// ----------------------------------------------------------------------------
-//  THE FIELD — two smooth analytic maps on the sphere (functions, not buffers)
-// ----------------------------------------------------------------------------
+// ─── SHARED: FIELD ───────────────────────────────────────────────────────────
 function mulberry32(seed) {
   return function () {
     seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
@@ -35,6 +33,177 @@ function fieldB(v) {
   for (const b of basis) s += (MIX * b.a + sqrtComp * b.c) * Math.cos(b.f * v.dot(b.u) + b.ph);
   return s;
 }
+
+// ─── SHARED: COLORMAPS ───────────────────────────────────────────────────────
+const MAKO = [
+  [0.04,0.02,0.05],[0.10,0.07,0.16],[0.16,0.12,0.28],[0.21,0.18,0.40],
+  [0.23,0.26,0.50],[0.22,0.35,0.55],[0.20,0.44,0.57],[0.20,0.53,0.58],
+  [0.24,0.62,0.57],[0.36,0.71,0.55],[0.55,0.80,0.58],[0.78,0.89,0.70]
+];
+const VIRIDIS = [
+  [0.267,0.005,0.329],[0.283,0.141,0.458],[0.254,0.265,0.530],[0.207,0.372,0.553],
+  [0.164,0.471,0.558],[0.128,0.567,0.551],[0.135,0.659,0.518],[0.267,0.749,0.441],
+  [0.478,0.821,0.318],[0.741,0.873,0.150],[0.993,0.906,0.144]
+];
+function rampAt(arr, t) {
+  const x = t * (arr.length - 1), i = Math.floor(x), f = x - i;
+  const c0 = arr[i], c1 = arr[Math.min(i + 1, arr.length - 1)];
+  return [c0[0]+(c1[0]-c0[0])*f, c0[1]+(c1[1]-c0[1])*f, c0[2]+(c1[2]-c0[2])*f];
+}
+
+// ─── SHARED: SCENE ───────────────────────────────────────────────────────────
+const sceneEl = document.getElementById('orb-layer');
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+sceneEl.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+const CAM_FAR = 9;
+const PANEL_W = 380, ORB_R = 1.9, Z_CAP = 8.0;
+function camNear() {
+  const w = window.innerWidth, h = window.innerHeight;
+  if (w <= 720) return w < 600 ? 7.2 : 5.2;
+  const denom = (2 * (w - PANEL_W) - w) * 0.4142;
+  if (denom <= 0) return Z_CAP;
+  return Math.min(Z_CAP, Math.max(5.2, ORB_R * h / denom));
+}
+function bodyZ()    { return (window.innerWidth / window.innerHeight) < 0.85 ? 7.8 : 6.2; }
+function bodyLift() { return (window.innerWidth / window.innerHeight) < 0.85 ? 0.15 : 0.25; }
+const CLOSER_SINK = 0.9;
+const CLOSER_ZOOM = 3.1;
+camera.position.set(0, 0, CAM_FAR);
+
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+const key = new THREE.PointLight(0xfff0e0, 26, 0, 2); key.position.set(5, 3, 6);
+const rim = new THREE.PointLight(0x8a6bff, 18, 0, 2); rim.position.set(-6, -2, -3);
+const amb = new THREE.AmbientLight(0x3a3a52, 1.0);
+scene.add(key, rim, amb);
+
+// ─── BRANCH ──────────────────────────────────────────────────────────────────
+const touchGated = window.matchMedia('(pointer: coarse)').matches;
+
+if (touchGated) {
+// ─── GATE EXPERIENCE ─────────────────────────────────────────────────────────
+// Spinning draggable sphere + email CTA. No brain surface, no D3, no state
+// machine, no scroll machinery — none of it initialises on touch devices.
+
+  document.getElementById('touch-gate').classList.add('show');
+  document.getElementById('ui').style.display = 'none';       // hide floatR, hint, door, panel
+  document.getElementById('spacer').style.height = '0';        // no scroll room
+  document.documentElement.style.overscrollBehavior = 'none';  // suppress iOS rubber-band
+  document.body.style.overflow = 'hidden';                     // belt-and-suspenders scroll lock
+
+  // Icosphere → even triangular facets (crystalline, like the brain mesh's chunky look).
+  // toNonIndexed: distinct verts per face so flat shading reads as real facets.
+  const sphGeo  = new THREE.IcosahedronGeometry(1.5, 4).toNonIndexed();
+  const posArr  = sphGeo.attributes.position.array;
+  const vCount  = sphGeo.attributes.position.count;
+  const gVals   = new Float32Array(vCount);
+  const _gv     = new THREE.Vector3();
+  let gMin = Infinity, gMax = -Infinity;
+  for (let i = 0; i < vCount; i++) {
+    _gv.set(posArr[i*3], posArr[i*3+1], posArr[i*3+2]).normalize();
+    const v = fieldB(_gv); gVals[i] = v;
+    if (v < gMin) gMin = v; if (v > gMax) gMax = v;
+  }
+  const gColors = new Float32Array(vCount * 3);
+  const _gCol   = new THREE.Color();
+  for (let i = 0; i < vCount; i++) {
+    let t = (gVals[i] - gMin) / (gMax - gMin || 1);
+    if (!(t >= 0 && t <= 1)) t = 0;   // guard NaN / out-of-range
+    const rgb = rampAt(MAKO, t);
+    _gCol.setRGB(rgb[0], rgb[1], rgb[2]).convertSRGBToLinear();
+    gColors[i*3] = _gCol.r; gColors[i*3+1] = _gCol.g; gColors[i*3+2] = _gCol.b;
+  }
+  sphGeo.setAttribute('color', new THREE.BufferAttribute(gColors, 3));
+
+  // Glassy faceted material — same as the desktop landing orb. No scene.background:
+  // transmission samples the CSS dark backdrop behind the transparent canvas.
+  const sphMat = new THREE.MeshPhysicalMaterial({
+    vertexColors: true, flatShading: true,
+    transmission: 0.85, thickness: 1.5, ior: 1.45, roughness: 0.4, metalness: 0.0,
+    iridescence: 0.15, iridescenceIOR: 1.6, clearcoat: 0.6, clearcoatRoughness: 0.25,
+    specularIntensity: 1.0, attenuationColor: new THREE.Color(0x8a6bff), attenuationDistance: 3.4,
+    envMapIntensity: 1.4
+  });
+  const gOrb = new THREE.Mesh(sphGeo, sphMat);
+  scene.add(gOrb);
+
+  const gComposer = new EffectComposer(renderer);
+  gComposer.addPass(new RenderPass(scene, camera));
+  const gBloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.35, 0.8, 0.85);
+  gComposer.addPass(gBloom);
+  gComposer.addPass(new OutputPass());
+
+  // Frame by whichever axis is tighter (portrait → width-limited) + 18% margin,
+  // so the orb never clips on any aspect ratio. FOV is vertical (45°), tan(22.5°)=0.4142.
+  function gateZ(aspect) {
+    const R = 1.5, MARGIN = 1.18, TAN = 0.4142;
+    return Math.max(R * MARGIN / TAN, R * MARGIN / (TAN * aspect));
+  }
+  function gResize() {
+    const w = sceneEl.clientWidth, h = sceneEl.clientHeight;
+    renderer.setSize(w, h); gComposer.setSize(w, h);
+    gBloom.setSize(Math.max(1, w >> 1), Math.max(1, h >> 1));
+    camera.aspect = w / h; camera.updateProjectionMatrix();
+    camera.position.z = gateZ(w / h); camera.lookAt(0, 0, 0);
+  }
+  window.addEventListener('resize', gResize); gResize();
+
+  // Drag — pure pointer events, zero scroll machinery
+  const gRay = new THREE.Raycaster(), gNdc = new THREE.Vector2();
+  let gDown = false, gDragging = false, gLastX = 0, gLastY = 0, gDist = 0;
+  function gHits(e) {
+    const r = renderer.domElement.getBoundingClientRect();
+    gNdc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    gRay.setFromCamera(gNdc, camera);
+    return gRay.intersectObject(gOrb).length > 0;
+  }
+  renderer.domElement.addEventListener('pointerdown', e => {
+    if (!gHits(e)) return;
+    gDown = true; gDist = 0; gLastX = e.clientX; gLastY = e.clientY;
+    sceneEl.classList.add('grabbing');
+  });
+  renderer.domElement.addEventListener('pointermove', e => {
+    if (!gDown) return;
+    const dx = e.clientX - gLastX, dy = e.clientY - gLastY;
+    gLastX = e.clientX; gLastY = e.clientY; gDist += Math.hypot(dx, dy);
+    if (gDist > 4) {
+      gDragging = true;
+      gOrb.quaternion.premultiply(
+        new THREE.Quaternion().setFromEuler(new THREE.Euler(dy * 0.006, dx * 0.006, 0, 'XYZ'))
+      );
+      e.preventDefault();
+    }
+  }, { passive: false });
+  window.addEventListener('pointerup', () => {
+    gDown = false; gDragging = false; sceneEl.classList.remove('grabbing');
+  });
+  // Claim at touchstart — before browser commits to a scroll gesture
+  renderer.domElement.addEventListener('touchstart', e => {
+    if (e.touches.length === 1 &&
+        gHits({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY }))
+      e.preventDefault();
+  }, { passive: false });
+
+  const gIdleAxis = new THREE.Vector3(0.25, 1, 0.08).normalize();
+  let gLastT = 0, gTick = 0;   // seed 0 so first RAF always passes the timing gate
+  function gAnimate(now) {
+    requestAnimationFrame(gAnimate);
+    if (!gDragging && (now - gLastT) < 42) return;
+    gLastT = now; gTick++;
+    if (!gDragging) gOrb.rotateOnWorldAxis(gIdleAxis, 0.0019);
+    gComposer.render();
+  }
+  requestAnimationFrame(gAnimate);
+
+} else {
+// ─── DESKTOP EXPERIENCE ──────────────────────────────────────────────────────
 
 // ----------------------------------------------------------------------------
 //  SAMPLING + correlation
@@ -75,66 +244,8 @@ function randomQuaternion() {                 // Shoemake (1992): uniform on SO(
 }
 
 // ----------------------------------------------------------------------------
-//  COLORMAPS — mako (landing) ↔ viridis (body), cross-blended by scroll
+//  BRAIN SURFACE
 // ----------------------------------------------------------------------------
-const MAKO = [
-  [0.04,0.02,0.05],[0.10,0.07,0.16],[0.16,0.12,0.28],[0.21,0.18,0.40],
-  [0.23,0.26,0.50],[0.22,0.35,0.55],[0.20,0.44,0.57],[0.20,0.53,0.58],
-  [0.24,0.62,0.57],[0.36,0.71,0.55],[0.55,0.80,0.58],[0.78,0.89,0.70]
-];
-const VIRIDIS = [
-  [0.267,0.005,0.329],[0.283,0.141,0.458],[0.254,0.265,0.530],[0.207,0.372,0.553],
-  [0.164,0.471,0.558],[0.128,0.567,0.551],[0.135,0.659,0.518],[0.267,0.749,0.441],
-  [0.478,0.821,0.318],[0.741,0.873,0.150],[0.993,0.906,0.144]
-];
-function rampAt(arr, t) {
-  const x = t * (arr.length - 1), i = Math.floor(x), f = x - i;
-  const c0 = arr[i], c1 = arr[Math.min(i + 1, arr.length - 1)];
-  return [c0[0]+(c1[0]-c0[0])*f, c0[1]+(c1[1]-c0[1])*f, c0[2]+(c1[2]-c0[2])*f];
-}
-
-// ----------------------------------------------------------------------------
-//  SCENE
-// ----------------------------------------------------------------------------
-const sceneEl = document.getElementById('orb-layer');
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));   // heat: cap DPR
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.1;
-sceneEl.appendChild(renderer.domElement);
-
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
-const CAM_FAR = 9;
-// Landing framing: ease the orb back on narrow windows so it clears the 380px
-// right panel instead of sliding under it. Above ~1700px wide it's untouched
-// (your full-screen Mac); below that it pulls back gradually, capped so it never
-// shrinks to a dot. ORB_R is padded past the true 1.5 radius to cover the sphere's
-// silhouette projecting larger than its centre plane, plus the bloom glow.
-// z needed = ORB_R * H / ((2A - W) * tan(22.5°)), A = viewport width minus panel.
-const PANEL_W = 380, ORB_R = 1.9, Z_CAP = 8.0;
-function camNear() {
-  const w = window.innerWidth, h = window.innerHeight;
-  if (w <= 720) return w < 600 ? 7.2 : 5.2; // panel docks to bottom — no side clip
-  const denom = (2 * (w - PANEL_W) - w) * 0.4142; // 0.4142 = tan(22.5°), FOV half-angle
-  if (denom <= 0) return Z_CAP;
-  return Math.min(Z_CAP, Math.max(5.2, ORB_R * h / denom));
-}
-// body resting framing (also the anchor the closer sinks away from)
-function bodyZ()    { return (window.innerWidth / window.innerHeight) < 0.85 ? 7.8 : 6.2; }
-function bodyLift() { return (window.innerWidth / window.innerHeight) < 0.85 ? 0.15 : 0.25; }
-const CLOSER_SINK = 0.9;   // ending: how far the orb drops (camera looks up). ↑ = lower on screen
-const CLOSER_ZOOM = 3.1;    // ending: how much the orb shrinks (camera pulls back). ↑ = smaller
-camera.position.set(0, 0, CAM_FAR);
-
-const pmrem = new THREE.PMREMGenerator(renderer);
-scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-
-const key = new THREE.PointLight(0xfff0e0, 26, 0, 2); key.position.set(5, 3, 6);
-const rim = new THREE.PointLight(0x8a6bff, 18, 0, 2); rim.position.set(-6, -2, -3);
-const amb = new THREE.AmbientLight(0x3a3a52, 1.0);
-scene.add(key, rim, amb);
-
 // real left-hemisphere cortical surface: sphere + inflated, shared faces (1:1).
 const brain = await fetch('./brain-export/brain.json').then(r => r.json());
 const SPH_R = 1.5;
@@ -185,8 +296,6 @@ geo.computeVertexNormals();
 paint(0);
 
 // sphere ⇄ cortex morph. cortexAmt: 0 = sphere, 1 = cortical surface.
-// (avoiding "inflate" on purpose — it's ambiguous: the sphere is arguably the
-//  more-inflated form, even though FreeSurfer names the brain surface "inflated".)
 let cortexAmt = 0, cortexTarget = 0;
 function setCortex(t) {
   const arr = geoPos.array;
@@ -295,7 +404,7 @@ function finishRun() {
       : pv < 0.02
       ? "Orange broke from the crowd. Smoothness alone can't fake this one — something's actually there."
       : 'Orange sits at the edge of the crowd. Borderline — smoothness explains most of it.';
-  verdictEl.innerHTML = read + ' <span class="method"><a href="https://doi.org/10.1016/j.neuroimage.2018.05.070" target="_blank" rel="noopener">Alexander-Bloch et al., 2018</a>: a null that keeps the smoothness and breaks the alignment, so the match has something honest to beat.</span>';
+  verdictEl.innerHTML = read + ' <span class="method"><a href="https://doi.org/10.1016/j.neuroimage.2018.05.070" target="_blank" rel="noopener">Alexander-Bloch et al., 2018</a>: a null that keeps the smoothness and breaks the alignment, so the match has something honest to beat.</span>';
   verdictEl.classList.add('show');
 }
 function ease(t) { return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t; }
@@ -333,13 +442,13 @@ function applyMorph(p) {
   material.clearcoat    = lerp(0.60, 0.15, p);
   material.envMapIntensity = lerp(1.4, 1.05, p);
   bloom.strength = lerp(0.35, 0.0, p);
-  bloom.enabled = p < 0.5;                       // perf: skip the whole bloom pass in the light body (strength≈0 there anyway)
+  bloom.enabled = p < 0.5;                       // perf: skip the whole bloom pass in the light body
   renderer.toneMappingExposure = lerp(1.1, 1.0, p);
   amb.intensity = lerp(1.0, 1.7, p);
   paint(p);
   ui.style.opacity = (1 - p).toFixed(3);
   ui.style.visibility = p > 0.92 ? 'hidden' : 'visible';
-  
+
   arrival.classList.toggle('show', p >= 0.55 && !bodyRevealed);
 
   if (panel.classList.contains('show')) {              // panel leaves early + slides, not a slow dim
@@ -427,51 +536,44 @@ function hideToy() {
 }
 toggleBtns.forEach(b => b.addEventListener('click', e => { e.stopPropagation(); setMode(b.dataset.mode); }));
 
-// The closer lives in the otherwise-dead second viewport of scroll. As you descend
-// into it the orb recedes and the toy leaves, so the bare thesis owns the screen.
-// Stays locked until the spin's been tried — no conclusion until you've seen it done.
+// The closer lives in the otherwise-dead second viewport of scroll.
 const closer = document.getElementById('closer');
 const colophon = document.getElementById('colophon');
 let lastCloserP = 0;
 function updateCloser(sy) {
   const h = window.innerHeight;
-  const cp = Math.min(1, Math.max(0, (sy - h) / (h * 0.55)));      // everyone gets the ending, spin or not
-  if (cp === 0 && lastCloserP === 0) return;                       // idle on the landing/upper body — nothing to do
+  const cp = Math.min(1, Math.max(0, (sy - h) / (h * 0.55)));
+  if (cp === 0 && lastCloserP === 0) return;
   lastCloserP = cp;
   closer.style.opacity = cp.toFixed(3);
   toy.style.opacity = cp > 0 ? (1 - cp).toFixed(3) : '';
-  if (cp > 0) {                                                    // orb sinks + shrinks (no fade) so the thesis up top reads deliberate
+  if (cp > 0) {
     const e = cp * cp * (3 - 2 * cp);            // smoothstep
     camera.position.z = bodyZ() + CLOSER_ZOOM * e;
     camera.lookAt(0, lerp(-bodyLift(), CLOSER_SINK, e), 0);
     needsRender = true;
-  } else {                                                        // leaving the closer → restore body framing once
+  } else {
     camera.position.z = bodyZ(); camera.lookAt(0, -bodyLift(), 0); needsRender = true;
   }
-  const sigP = Math.min(1, Math.max(0, (sy - h * 1.35) / (h * 0.45)));   // colophon trails in at the very bottom
+  const sigP = Math.min(1, Math.max(0, (sy - h * 1.35) / (h * 0.45)));
   colophon.style.opacity = sigP.toFixed(3);
   colophon.style.pointerEvents = sigP > 0.5 ? 'auto' : 'none';
 }
 
-// poke the orb after the toy's up (and you're not in the closer) and it gets mouthy.
-// a couple of freebie pokes first, then it works through a small bank and bows out —
-// so casual taps stay quiet and only persistent pokers find it.
+// poke the orb after the toy's up — escalating quips, then silence.
 const quipEl = document.getElementById('quip');
 const QUIPS = [
   "still here?",
   "you again. fine.",
-  "this is the third time. i’m keeping count. i’m a brain, counting’s free.",
-  "i’m not a fidget toy.",
+  "this is the third time. i'm keeping count. i'm a brain, counting's free.",
+  "i'm not a fidget toy.",
   "poke me again and i'm billing your PI.",
   "this is objectification with extra steps.",
   "Alexander-Bloch never poked me this much.",
   "okay now YOU'RE the one p-hacking.",
-  "we’re done here. go pet a dog.",
+  "we're done here. go pet a dog.",
 ];
 const GOODBYE = "go pet a dog.";
-// the descent to the ending stays locked until the body's been earned (monologue done,
-// toggles up). then a shy down-arrow surfaces once all three tabs are tried and the user
-// idles ~2s — so the scrollbar isn't the only clue there's more below.
 const bodydown = document.getElementById('bodydown');
 const tabsTried = new Set();
 let endingUnlocked = false, bodyIdleTimer = null;
@@ -479,7 +581,7 @@ function maybeShowDown() {
   if (endingUnlocked && tabsTried.size === 3 && morphP >= 0.5 && lastCloserP < 0.05)
     bodydown.classList.add('show');
 }
-function bodyActivity() {                              // any poke/tab/scroll hides the hint and re-arms it
+function bodyActivity() {
   bodydown.classList.remove('show');
   clearTimeout(bodyIdleTimer);
   bodyIdleTimer = setTimeout(maybeShowDown, 2000);
@@ -493,16 +595,15 @@ function showQuip(text, ms = 3400) {
   quipTimer = setTimeout(() => quipEl.classList.remove('show'), ms);
 }
 function pokeQuip() {
-  const i = extraPoke++ - 2;            // 2 freebie pokes, then the bank
+  const i = extraPoke++ - 2;
   if (i < 0) return;
-  if (i < QUIPS.length) showQuip(QUIPS[i]);          // the escalating bank
-  else if (i < QUIPS.length + 3) showQuip(GOODBYE);  // then it says goodbye three times
-  // after that, poking does nothing — it's done with you
+  if (i < QUIPS.length) showQuip(QUIPS[i]);
+  else if (i < QUIPS.length + 3) showQuip(GOODBYE);
 }
 
-// drag-spin it hard for a couple of seconds and it gets queasy, then rights itself.
+// drag-spin it hard and it gets queasy.
 const wobbleAxis = new THREE.Vector3(1, 0, 0.35).normalize();
-const SICK = [                                   // add your own lines here, picked at random
+const SICK = [
   "ok. ok. i'm gonna be sick.",
   "whoa — okay, that's plenty.",
   "i can see the back of my own head.",
@@ -522,20 +623,19 @@ let lastT = performance.now(), prevSY = -1;
 
 function animate(now) {
   requestAnimationFrame(animate);
-  if (!visible || modalOpen) return;     // modal open → freeze the orb so its live render
-                                         // doesn't force the backdrop-blur to recompute (text-selection lag)
+  if (!visible || modalOpen) return;
 
   const sy = window.scrollY;
   const scrolling = Math.abs(sy - prevSY) > 0.5; prevSY = sy;
   const hi = dragging || scrolling || state === 'approaching' || (state === 'running' && !prefersReduced);
-  if (!hi && (now - lastT) < 42) return;       // ~24fps when idle, 60 when active (perf: idle orb spin is the heat)
+  if (!hi && (now - lastT) < 42) return;
   lastT = now;
   frameTick++;
 
   applyMorph(Math.min(1, Math.max(0, sy / window.innerHeight)));
   updateCloser(sy);
   const inBody = morphP >= 0.5;
-  if (!inBody && (cortexTarget !== 0 || bodyRevealed)) {           // landing is always the bare sphere
+  if (!inBody && (cortexTarget !== 0 || bodyRevealed)) {
     cortexTarget = 0; arrival.textContent = 'poke me again'; if (bodyRevealed) hideToy();
   }
   if (Math.abs(cortexAmt - cortexTarget) > 0.001) {
@@ -555,9 +655,9 @@ function animate(now) {
     if (t >= 1) settle(); living = true;
   } else if (state === 'running') {
     if (inBody) {
-      // scrolled away mid-spin → freeze (no advance, no render); resumes on scroll-up
+      // scrolled away mid-spin → freeze
     } else if (prefersReduced) {
-      if (frameTick % 2 === 0) addSamples(14);                  // no orb motion; SVG updates itself
+      if (frameTick % 2 === 0) addSamples(14);
     } else if (nulls.length < SAVOR) {                          // savour: coupled hypnotic glides
       const { step, dwell: dw } = cadence();
       if (slerpT < 1) { slerpT = Math.min(1, slerpT + step); orb.quaternion.slerpQuaternions(fromQ, toQ, ease(slerpT)); if (slerpT >= 1) dwell = dw; }
@@ -565,25 +665,23 @@ function animate(now) {
       else { const r = correlationAt(orb.quaternion); nulls.push(r); floatB.textContent = r.toFixed(2); drawHist(); nextJump(); }
       living = true;
     } else {                                                    // blitz: whirr + fast fill to 1000
-      orb.rotateOnWorldAxis(idleAxis, 0.03);                 // slower whirr
+      orb.rotateOnWorldAxis(idleAxis, 0.03);
       addSamples(Math.min(10, 1 + Math.floor((nulls.length - SAVOR) / 30)));
       living = true;
     }
-  } else if (!inBody) {                                         // landing idle (deep/settled/done) stays alive
+  } else if (!inBody) {                                         // landing idle
     if (!dragging) orb.rotateOnWorldAxis(idleAxis, (state === 'done' ? 0.0016 : 0.0019) * idle);
     if (state !== 'deep' && frameTick % 6 === 0) floatB.textContent = correlationAt(orb.quaternion).toFixed(2);
     if (idle) living = true;
   }
-  // in the body at rest: nothing renders until scroll/drag dirties it
   if (inBody && bodyRevealed && bodyMode === 'spin' && !dragging && !prefersReduced && lastCloserP < 0.05) {
-    orb.rotateOnWorldAxis(idleAxis, 0.01); living = true;          // spin mode whirs on the sphere
+    orb.rotateOnWorldAxis(idleAxis, 0.01); living = true;
   }
-  // at the ending: whatever they landed on (sphere OR brain) turns slowly on its own, undraggable
   if (lastCloserP > 0.05 && !prefersReduced) {
     orb.rotateOnWorldAxis(idleAxis, 0.0035); living = true;
   }
 
-  if (nausea) {                                       // queasy wobble that decays back to upright
+  if (nausea) {
     const dt = (performance.now() - nauseaStart) / 1000;
     if (dt >= 2.2) nausea = false;
     else { orb.rotateOnWorldAxis(wobbleAxis, Math.sin(dt * 22) * 0.05 * (1 - dt / 2.2)); living = true; }
@@ -596,7 +694,6 @@ requestAnimationFrame(animate);
 
 // ----------------------------------------------------------------------------
 //  POINTER — raycast-gated: only the orb is draggable/clickable.
-//  Off-orb touches fall through to page scroll (mobile-safe).
 // ----------------------------------------------------------------------------
 const ray = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
@@ -610,7 +707,7 @@ function hitsOrb(e) {
 const canDrag = () => state === 'settled' || state === 'running' || state === 'done';
 
 renderer.domElement.addEventListener('pointerdown', e => {
-  if (!hitsOrb(e)) { downOnOrb = false; return; }   // let the page scroll
+  if (!hitsOrb(e)) { downOnOrb = false; return; }
   downOnOrb = true; moveDist = 0; lastX = e.clientX; lastY = e.clientY;
   if (canDrag()) setCursor('grabbing');
 });
@@ -618,19 +715,18 @@ renderer.domElement.addEventListener('pointermove', e => {
   if (downOnOrb) {
     const dx = e.clientX - lastX, dy = e.clientY - lastY;
     lastX = e.clientX; lastY = e.clientY; moveDist += Math.hypot(dx, dy);
-    if (canDrag() && lastCloserP < 0.35 && moveDist > 4) {    // no dragging once it's settling into the ending
+    if (canDrag() && lastCloserP < 0.35 && moveDist > 4) {
       dragging = true;
       const dq = new THREE.Quaternion().setFromEuler(new THREE.Euler(dy * 0.006, dx * 0.006, 0, 'XYZ'));
       orb.quaternion.premultiply(dq);
-      e.preventDefault();                            // stop touch-scroll while rotating the orb
-      const nowT = performance.now();                // build up to motion sickness on sustained fast spinning
-      if (nowT - lastDragT > 220) dragAccum = 0;     // a pause settles its stomach
+      e.preventDefault();
+      const nowT = performance.now();
+      if (nowT - lastDragT > 220) dragAccum = 0;
       lastDragT = nowT; dragAccum += Math.hypot(dx, dy);
       if (dragAccum > 1200 && !nausea) startNausea();
     }
     return;
   }
-  // hover: the hand cursor appears only over the orb
   if (e.pointerType === 'touch') return;
   if (hitsOrb(e)) setCursor(state === 'deep' ? 'pokeable' : canDrag() ? 'grabbable' : null);
   else setCursor(null);
@@ -640,12 +736,12 @@ window.addEventListener('pointerup', () => {
   if (wasClick) {
     if (morphP >= 0.5) {                                              // body: poke reveals, then drives the monologue
       if (!bodyRevealed) revealBody();
-      else if (!toy.classList.contains('show')) advanceIntro();       // toggles take over once shown
-      else if (lastCloserP < 0.05) pokeQuip();                        // toy's up & not in the closer → quips
-      bodyActivity();                                                 // any body poke re-arms the down-hint
+      else if (!toy.classList.contains('show')) advanceIntro();
+      else if (lastCloserP < 0.05) pokeQuip();
+      bodyActivity();
     }
     else if (state === 'deep') startApproach();
-    else if (state === 'settled' && morphP < 0.4) startRun();         // spin belongs to the landing
+    else if (state === 'settled' && morphP < 0.4) startRun();
     else if (state === 'running') fast = !fast;
   }
   downOnOrb = false; dragging = false;
@@ -654,17 +750,16 @@ window.addEventListener('pointerup', () => {
 window.addEventListener('scroll', () => {
   if (state === 'deep') { window.scrollTo(0, 0); return; }
   const h = window.innerHeight;
-  if (!endingUnlocked && window.scrollY > h) { window.scrollTo(0, h); return; }   // hold at the body until earned
-  bodyActivity();                                                                 // scrolling hides the down-hint
+  if (!endingUnlocked && window.scrollY > h) { window.scrollTo(0, h); return; }
+  bodyActivity();
 }, { passive: false });
-// space shouldn't fling the landing out of its ceremony by accident; once in the
-// body it scrolls normally again. buttons/inputs keep their keyboard activation.
 window.addEventListener('keydown', e => {
   if (e.code !== 'Space' || morphP >= 0.5) return;
   const t = e.target;
   if (t && (t.tagName === 'BUTTON' || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
   e.preventDefault();
 }, { passive: false });
+
 // ----------------------------------------------------------------------------
 //  DOOR
 // ----------------------------------------------------------------------------
@@ -675,3 +770,5 @@ document.getElementById('door').addEventListener('click', e => { e.stopPropagati
 document.getElementById('modalClose').addEventListener('click', closeModal);
 modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+} // end desktop experience
