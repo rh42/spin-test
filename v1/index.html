@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Spin Test (v1)</title>
+<meta name="description" content="Why do two brain maps look correlated even when they're not? The spin test solves this. An interactive explainer for the Alexander-Bloch et al. 2018 spatial permutation method.">
+<!-- Archived first version. The live explainer is at the site root; this copy is kept
+     reachable for comparison but is deliberately unlisted and unindexed, and the canonical
+     tag points at the root so nothing here competes with it in search. -->
+<meta name="robots" content="noindex, nofollow">
+<link rel="canonical" href="https://rh42.github.io/spin-test/">
+<!-- Open Graph -->
+<meta property="og:title" content="The Spin Test">
+<meta property="og:description" content="Why do two brain maps look correlated even when they're not? Run 1,000 random rotations and watch the null distribution build in real time.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://rh42.github.io/spin-test/">
+<meta property="og:image" content="https://rh42.github.io/spin-test/og.png">
+
+<!-- Twitter/X card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="The Spin Test">
+<meta name="twitter:description" content="Why do two brain maps look correlated even when they're not? Run 1,000 random rotations and watch the null distribution build in real time.">
+<meta name="twitter:image" content="https://rh42.github.io/spin-test/og.png">
+<meta name="twitter:creator" content="@jelliwolf">
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3CradialGradient id='g' cx='38%25' cy='34%25' r='72%25'%3E%3Cstop offset='0%25' stop-color='%234fc4ac'/%3E%3Cstop offset='100%25' stop-color='%231a4a7a'/%3E%3C/radialGradient%3E%3C/defs%3E%3Ccircle cx='16' cy='16' r='13' fill='url(%23g)'/%3E%3Cpath d='M16 3a13 13 0 0 0 0 26' fill='none' stroke='%23e0f4f4' stroke-opacity='.35' stroke-width='1'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #ececf2;          /* dark-mode text */
+    --ink-dk: #1b1b22;       /* light-mode text */
+    --dim: #80808f;
+    --dim-dk: #6b6b76;
+    --accent: #F97316;
+    --bar: #6fb7e6;
+    --display: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+    --sans: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: auto; }
+  body { font-family: var(--sans); background: #060609; overflow-x: hidden; }
+
+  /* crossfading background layers (dark landing → light body) */
+  #bk-dark, #bk-light { position: fixed; inset: 0; z-index: 0; }
+  #bk-dark  { background: radial-gradient(ellipse 60% 55% at 50% 50%, #15131f 0%, #060609 72%); }
+  #bk-light { background: radial-gradient(ellipse 80% 70% at 50% 42%, #faf8f2 0%, #efece3 100%); opacity: 0; }
+
+  /* the orb lives here, fixed, the whole site pivots around it */
+  #orb-layer { position: fixed; inset: 0; z-index: 1; cursor: default; }
+  #orb-layer.pokeable { cursor: pointer; }
+  #orb-layer.grabbable { cursor: grab; }
+  #orb-layer.grabbing  { cursor: grabbing; }
+  #orb-layer canvas { display: block; }
+
+  /* landing UI — fixed, fades out as you descend */
+  #ui { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
+
+  #floatR {
+    position: absolute; top: 46px; left: 50%; transform: translateX(-50%);
+    font-family: var(--mono); font-size: 14px; letter-spacing: .05em;
+    color: var(--dim); opacity: 0; transition: opacity .6s ease;
+  }
+  #floatR.show { opacity: 1; }
+  #floatR b { color: var(--ink); font-weight: 500; }
+
+  #hint {
+    position: absolute; bottom: 8%; left: 50%; transform: translateX(-50%);
+    font-size: 13px; letter-spacing: .09em; color: var(--dim); white-space: nowrap;
+    animation: breathe 2.8s ease-in-out infinite;
+  }
+  #hint.hidden { opacity: 0; transition: opacity .5s ease; }
+  @keyframes breathe { 0%,100% { opacity: .3 } 50% { opacity: .8 } }
+  @media (prefers-reduced-motion: reduce) { #hint { animation: none; opacity: .6; } #panel { transition: none; } }
+
+  #door {
+    position: absolute; left: 22px; bottom: 20px; pointer-events: auto;
+    font-family: var(--sans); font-size: 12px; color: var(--dim);
+    background: none; border: none; cursor: pointer; border-bottom: 1px dotted #3a3a47; padding: 2px 0;
+  }
+  #door:hover { color: var(--ink); border-bottom-color: var(--ink); }
+
+  #panel {
+    position: absolute; top: 0; right: 0; width: 380px; height: 100%; pointer-events: auto;
+    padding: 34px 30px; display: flex; flex-direction: column; gap: 16px;
+    background: rgba(8,8,13,.82); backdrop-filter: blur(8px); border-left: 1px solid #1a1a24;
+    transform: translateX(110%); transition: transform .7s cubic-bezier(.2,.8,.2,1);
+  }
+  #panel.show { transform: translateX(0); }
+  .grid2 { display: flex; gap: 24px; }
+  .readout { font-family: var(--mono); }
+  .readout .lbl { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+  .readout .val { font-size: 30px; font-weight: 500; line-height: 1.2; color: var(--ink); }
+  .val.warm { color: var(--accent); }
+  #hist { width: 100%; height: auto; }
+  .axis text { fill: var(--dim); font-family: var(--mono); font-size: 10px; }
+  .axis path, .axis line { stroke: #28283400; }
+  .axis .domain { stroke: #2a2a36; }
+  .obs-line { stroke: var(--accent); stroke-width: 2; }
+  .lbl-obs  { fill: var(--accent); font-family: var(--mono); font-size: 10px; }
+  .lbl-null { fill: var(--dim); font-family: var(--mono); font-size: 10px; }
+  .bar { fill: var(--bar); }
+  p.note { font-size: 12px; line-height: 1.55; color: var(--dim); margin-top: auto; }
+  p.verdict { font-size: 13px; line-height: 1.6; color: var(--ink); opacity: 0; transition: opacity .9s ease; }
+  p.verdict.show { opacity: 1; }
+  p.verdict .method { color: var(--dim); }
+  p.verdict .method a { color: var(--dim); text-underline-offset: 2px; }
+  p.verdict .method a:hover { color: var(--ink); }
+
+  /* body arrival — fixed, fades IN as you descend (placeholder for now) */
+  #arrival {
+      position: fixed; left: 50%; bottom: 8%; transform: translateX(-50%);
+      z-index: 2; pointer-events: none; opacity: 0;
+      font-family: var(--mono); font-size: 13px; letter-spacing: .09em; color: var(--ink-dk);
+      white-space: nowrap;
+  }
+  #arrival.show { animation: breathe 2.8s ease-in-out infinite; }  /* breathe ONLY once in the body */
+
+  /* the brain's monologue — three poked lines, newest in focus at the hint's spot,
+     older ones drifted up and dimmed. clears when the toy takes over. */
+  #intro {
+    position: fixed; left: 0; right: 0; bottom: 8%; z-index: 2;
+    text-align: center; pointer-events: none;
+  }
+  .intro-line {
+    font-family: var(--mono); font-size: 13px; letter-spacing: .04em;
+    color: var(--ink-dk); line-height: 1.5; margin: 7px 0;
+    opacity: 0; transform: translateY(6px);
+    transition: opacity .55s ease, transform .55s ease;
+  }
+  .intro-line.in   { opacity: 1; transform: translateY(0); }
+  .intro-line.past { opacity: .26; transform: translateY(0); }
+  #intro.gone .intro-line { opacity: 0; transition: opacity .5s ease; }
+
+  /* the closer — scroll past the toy and the orb recedes; the thesis arrives bare,
+     out of the brain's first-person voice. gated on having tried the spin. */
+  #closer {
+    position: fixed; left: 50%; top: 24%; transform: translate(-50%, -50%);   /* high, clear of the sunk orb below */
+    z-index: 2; pointer-events: none; opacity: 0;
+    width: min(620px, 86vw); text-align: center;
+    pointer-events: auto;
+  }
+  #closer .lead {
+    font-family: var(--mono); font-size: 12.5px; letter-spacing: .02em;
+    color: var(--dim-dk); line-height: 1.6; margin-bottom: 14px;
+  }
+  #closer .stat {
+    font-family: var(--sans); font-size: 14px; letter-spacing: .02em;
+    color: var(--dim-dk); line-height: 1.65; margin-bottom: 24px;
+  }
+  #closer .stat b { color: var(--ink-dk); font-weight: 600; }
+  #closer .stat .cite { color: var(--dim-dk); }
+  #closer .stat .cite:hover { color: var(--ink-dk); }
+  #closer .thesis {
+    font-family: var(--sans); font-weight: 600; letter-spacing: -0.01em;
+    font-size: clamp(20px, 3.4vw, 30px); line-height: 1.3; color: var(--ink-dk);
+  }
+
+  /* the orb talks back if you keep poking it after the toy — orange, above the orb */
+  #quip {
+    position: fixed; top: 9%; left: 50%; transform: translateX(-50%); z-index: 2;
+    pointer-events: none; text-align: center; width: min(520px, 84vw);
+    font-family: var(--mono); font-size: 13px; letter-spacing: .03em;
+    color: var(--accent); opacity: 0; transition: opacity .4s ease;
+  }
+  #quip.show { opacity: 1; }
+
+  /* a shy down-arrow that surfaces only once all three tabs are tried and the user idles —
+     betrays that there's an ending below without nagging anyone who's still exploring */
+  #bodydown {
+    position: fixed; left: 50%; bottom: 4%; transform: translateX(-50%); z-index: 2;
+    font-size: 18px; color: var(--dim-dk); opacity: 0; pointer-events: none;
+  }
+  #bodydown.show { animation: bop 1.8s ease-in-out infinite; }
+  @keyframes bop {
+    0%, 100% { transform: translate(-50%, 0); opacity: .4; }
+    50%      { transform: translate(-50%, 6px); opacity: .85; }
+  }
+
+  /* colophon — fades in at the very bottom of the scroll, under the closer */
+  #colophon {
+    position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); z-index: 2;
+    opacity: 0; pointer-events: none; text-align: center; width: min(640px, 88vw);
+    font-family: var(--mono); font-size: 11.5px; line-height: 1.7; color: var(--dim-dk);
+  }
+  #colophon a { color: var(--dim-dk); text-underline-offset: 2px; }
+  #colophon a:hover { color: var(--ink-dk); }
+  #colophon .more { margin-top: 8px; }
+
+  /* the three-way toy — fades in after the poke-reveal */
+  #toy {
+    position: fixed; left: 0; right: 0; bottom: 7%; z-index: 2;
+    text-align: center; opacity: 0; pointer-events: none; transition: opacity .6s ease;
+  }
+  #toy.show { opacity: 1; }
+  #toggles { display: inline-flex; gap: 6px; pointer-events: auto; }
+  #toggles button {
+    font-family: var(--mono); font-size: 13px; letter-spacing: .04em; color: var(--dim-dk);
+    background: none; border: none; border-bottom: 1.5px solid transparent;
+    padding: 10px 16px; cursor: pointer;
+  }
+  #toggles button:hover { color: var(--ink-dk); }
+  #toggles button.active { color: var(--ink-dk); border-bottom-color: var(--accent); }
+  #toymsg {
+    margin-top: 16px; font-family: var(--mono); font-size: 13px; color: var(--dim-dk);
+    min-height: 1.3em; padding: 0 24px; letter-spacing: .01em;
+  }
+
+  /* scroll hint to enter the body — appears after the spin completes */
+  #descend {
+    position: absolute; bottom: 8%; left: 50%; transform: translateX(-50%);
+    font-size: 12px; letter-spacing: .12em; color: var(--dim); opacity: 0;
+    pointer-events: none;
+  }
+  #descend.show { animation: breathe 2.8s ease-in-out infinite; }  /* breathe ONLY once shown */
+
+  /* modal */
+  #modal { position: fixed; inset: 0; display: none; place-items: center; z-index: 10;
+    background: rgba(4,4,7,.78); backdrop-filter: blur(3px); }
+  #modal.show { display: grid; }
+  #modal .card {
+    position: relative; max-width: 480px; margin: 24px;
+    background: linear-gradient(#11111b, #0c0c12); border-radius: 16px; padding: 38px 38px 34px;
+    box-shadow: 0 1px 0 rgba(255,255,255,.05) inset, 0 0 0 1px #1d1d28, 0 24px 60px -20px rgba(0,0,0,.7);
+  }
+  #modal h2 { font-family: var(--display); font-size: 20px; font-weight: 600; margin-bottom: 16px; letter-spacing: .01em; color: #f0f0f5; }
+  #modal p { font-size: 15px; line-height: 1.62; color: #c4c4cf; margin-bottom: 14px; }
+  #modal p .obs { color: var(--accent); }
+  #modal p:last-of-type { color: var(--dim); font-size: 13.5px; margin-bottom: 0; }
+  #modalClose { position: absolute; top: 14px; right: 16px; font-size: 22px; line-height: 1;
+    color: var(--dim); background: none; border: none; cursor: pointer; }
+  #modalClose:hover { color: var(--ink); }
+
+  /* spacer creates the scroll distance; everything visual is fixed on top */
+  #spacer { height: 300vh; pointer-events: none; }   /* 1st viewport = morph, 2nd = the closer + colophon */
+
+  @media (max-width: 720px) {
+    #panel { width: auto; left: 0; right: 0; top: auto; bottom: 0; height: 48vh;
+      border-left: none; border-top: 1px solid #1a1a24; transform: translateY(110%); }
+    #panel.show { transform: translateY(0); }
+    p.note { display: none; }
+
+    /* collapse the door to a ? puck, top-right, clear of the bottom breathing copy */
+    #door {
+      left: auto; right: 16px; top: 16px; bottom: auto;
+      width: 32px; height: 32px; padding: 0; border-radius: 50%;
+      border: 1px solid #3a3a47; display: grid; place-items: center; font-size: 15px;
+    }
+    #door:hover { border-color: var(--ink); }
+    #door .door-label { display: none; }
+    #door::before { content: "?"; }
+  }
+
+  /* suppress flash-of-desktop-content before JS runs on touch devices */
+  @media (pointer: coarse) {
+    #ui { display: none; }
+    #spacer { height: 0; }
+    body { overflow: hidden; }
+  }
+
+  /* touch gate — pointer: coarse gets the orb to play with + email CTA */
+  #touch-gate {
+    display: none;
+    position: fixed; inset: 0; z-index: 5; pointer-events: none;
+    flex-direction: column; align-items: center; justify-content: flex-end;
+    padding-bottom: 13%; gap: 22px; text-align: center;
+  }
+  #touch-gate.show { display: flex; }
+  #gate-line {
+    font-family: var(--mono); font-size: 15.5px; color: var(--ink);
+    letter-spacing: .04em; line-height: 1.5; padding: 0 32px;
+    text-shadow: 0 1px 8px rgba(0,0,0,.65);   /* legible over the bright orb in landscape */
+    pointer-events: none;
+  }
+  #gate-mailto {
+    font-family: var(--mono); font-size: 13px; letter-spacing: .05em;
+    color: var(--ink); text-decoration: none;
+    padding: 13px 28px; border: 1px solid #3a3a47; border-radius: 6px;
+    background: rgba(6,6,9,.72); backdrop-filter: blur(6px);
+    pointer-events: auto;
+  }
+  #gate-mailto:active { border-color: var(--dim); }
+
+  /* accessibility / SEO */
+  .sr-only {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip: rect(0,0,0,0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+</head>
+<body>
+  <div class="sr-only">
+  <h1>The Spin Test — Spatial Permutation for Cortical Maps</h1>
+  <p>The spin test (Alexander-Bloch et al., 2018, NeuroImage) is a null model for testing whether two cortical maps are correlated beyond what spatial autocorrelation alone predicts. Random rotations are applied to a spherical representation of the cortical surface, preserving spatial smoothness while destroying anatomical alignment. This interactive demo lets you run 1000 random spins and watch the null distribution build in real time.</p>
+  </div>
+  <div id="bk-dark"></div>
+  <div id="bk-light"></div>
+
+  <div id="touch-gate">
+    <p id="gate-line">this one needs a mouse. the orb's just here to keep you company.</p>
+    <a id="gate-mailto" href="mailto:?subject=The%20Spin%20Test&body=https%3A%2F%2Frh42.github.io%2Fspin-test%2F">send it to yourself →</a>
+  </div>
+
+  <div id="orb-layer"></div>
+
+  <div id="ui">
+    <div id="floatR">r&nbsp;=&nbsp;<b>—</b></div>
+    <div id="hint">hello</div>
+    <div id="descend">scroll to continue ↓</div>
+    <button id="door"><span class="door-label">what am I looking at?</span></button>
+    <aside id="panel">
+      <div class="grid2">
+        <div class="readout"><div class="lbl">observed r</div><div class="val warm" id="obsR">—</div></div>
+        <div class="readout"><div class="lbl">p&nbsp;(spin)</div><div class="val" id="pVal">—</div></div>
+      </div>
+      <svg id="hist"></svg>
+      <div class="readout"><div class="lbl">spins</div><div class="val" id="nSpin" style="font-size:20px">0</div></div>
+      <p class="note">orange: the correlation you actually measured. blue: a thousand more from spinning one map to random angles. each spin keeps the map's smoothness but breaks its alignment — so the blue cloud is what smoothness alone can fake.</p>
+      <p class="verdict" id="verdict"></p>
+    </aside>
+  </div>
+
+  <div id="intro"></div>
+
+  <div id="toy">
+    <div id="toggles">
+      <button data-mode="real" class="active">real</button>
+      <button data-mode="shuffle">shuffle</button>
+      <button data-mode="spin">spin</button>
+    </div>
+    <div id="toymsg"></div>
+  </div>
+
+  <div id="arrival">poke me again</div>
+
+  <div id="closer">
+    <!-- <div class="lead">Shuffling the map isn't the same as spinning it. <br>Compare against the wrong kind of fake, and almost anything looks real.</div> -->
+    <div class="stat">Across 7,140 real pairs of brain maps, the naïve test counted <b>5,331</b> as real matches. The spin test counted <b>35</b>. <a class="cite" href="https://doi.org/10.1016/j.neuroimage.2018.05.070" target="_blank" rel="noopener">Alexander-Bloch et al., 2018</a></div>
+    <div class="thesis">Looking alike isn't the same as being linked.</div>
+  </div>
+
+  <div id="quip"></div>
+
+  <div id="bodydown">↓</div>
+
+  <footer id="colophon">
+    <div>Maps are synthetic. The smoothness is not. Rotations uniform on SO(3) — Shoemake 1992.
+    <br>Built by @jelliwolf</div>
+  <div class="more">
+    <a href="https://rh42.github.io/sfc/" target="_blank" rel="noopener">a gentle tour of structure–function coupling</a> · 
+    <a href="https://rh42.github.io/salience/" target="_blank" rel="noopener">which brain region are you?</a>
+  </div>
+  </footer>
+
+  <div id="modal">
+    <div class="card">
+      <button id="modalClose">&times;</button>
+      <h2>What am I looking at?</h2>
+      <p>A brain map, having an identity crisis.</p>
+      <p>Neuroscientists often want to know if two brain features line up. Say, does myelin — the fatty coating that speeds up signals — follow the same pattern as which network a region belongs to? Match or no match, that's worth knowing.</p>
+      <p>Obvious move: correlate the two maps. Done? Not quite. The brain is smooth — nearby regions resemble each other just for being neighbours. So two unrelated maps still overlap, because they're painted on the same smeared-out blob. The brain isn't lying to you. It's just being the brain.</p>
+      <p>So how do you know a match is real? You build a pile of fake ones to beat. Take one map and spin it to a random angle on the sphere — not the brain, just the map, like scribbling "myelin" on a globe and giving it a flick. Now it's misaligned with the other map, but still internally smooth. Measure the correlation. That's one fake match. Do it a thousand times.</p>
+      <p>The <span class="obs">orange line</span> is the correlation you actually measured, properly aligned. Swallowed by the pile? Smoothness was doing the work. Standing clear of it? Something real might be going on.</p>
+      <p>That's the spin test. (Nobody in my lab had heard of it either.)</p>
+    </div>
+  </div>
+
+  <div id="spacer"></div>
+  <script type="module" src="./main.js"></script>
+  <script data-goatcounter="https://spin.goatcounter.com/count"
+        async src="//gc.zgo.at/count.js"></script>
+</body>
+</html>

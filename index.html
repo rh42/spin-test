@@ -4,11 +4,11 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>The Spin Test</title>
-<meta name="description" content="Why do two brain maps look correlated even when they're not? The spin test solves this. An interactive explainer for the Alexander-Bloch et al. 2018 spatial permutation method.">
+<meta name="description" content="Why do two brain maps look correlated even when they’re not? An interactive explainer for the Alexander-Bloch et al. 2018 spatial permutation method.">
 <link rel="canonical" href="https://rh42.github.io/spin-test/">
 <!-- Open Graph -->
 <meta property="og:title" content="The Spin Test">
-<meta property="og:description" content="Why do two brain maps look correlated even when they're not? Run 1,000 random rotations and watch the null distribution build in real time.">
+<meta property="og:description" content="Why do two brain maps look correlated even when they’re not? Rotate one map a thousand times and watch what the correlation was worth.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://rh42.github.io/spin-test/">
 <meta property="og:image" content="https://rh42.github.io/spin-test/og.png">
@@ -16,371 +16,818 @@
 <!-- Twitter/X card -->
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="The Spin Test">
-<meta name="twitter:description" content="Why do two brain maps look correlated even when they're not? Run 1,000 random rotations and watch the null distribution build in real time.">
+<meta name="twitter:description" content="Why do two brain maps look correlated even when they’re not? Rotate one map a thousand times and watch what the correlation was worth.">
 <meta name="twitter:image" content="https://rh42.github.io/spin-test/og.png">
 <meta name="twitter:creator" content="@jelliwolf">
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3CradialGradient id='g' cx='38%25' cy='34%25' r='72%25'%3E%3Cstop offset='0%25' stop-color='%234fc4ac'/%3E%3Cstop offset='100%25' stop-color='%231a4a7a'/%3E%3C/radialGradient%3E%3C/defs%3E%3Ccircle cx='16' cy='16' r='13' fill='url(%23g)'/%3E%3Cpath d='M16 3a13 13 0 0 0 0 26' fill='none' stroke='%23e0f4f4' stroke-opacity='.35' stroke-width='1'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
+  /* ── one territory ─────────────────────────────────────────────────────────────────
+     The page is light throughout and the orbs keep one matte look. No dark mode and no
+     glass: glass buries the colormap under specular, and the dark half only existed to
+     protect it. What survives of the dawn is --p, a tint from 0 (first light, warm and low)
+     to 1 (full daylight) across the first two beats. It transitions in CSS, so it still runs
+     under a suspended frame loop, and it touches nothing but the page. */
+  @property --p { syntax: '<number>'; inherits: true; initial-value: 0; }
+  /* The easing has to be a real declaration on an element. `transition` is not a descriptor
+     @property accepts, so declaring it in the at-rule is dropped and the tint snaps. */
+  html { transition: --p 2.4s var(--ease); }
+
   :root {
-    --ink: #ececf2;          /* dark-mode text */
-    --ink-dk: #1b1b22;       /* light-mode text */
-    --dim: #80808f;
-    --dim-dk: #6b6b76;
-    --accent: #F97316;
-    --bar: #6fb7e6;
-    --display: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
+    /* Paper is bright and near-neutral. It was a cooler, darker grey; cold text on cold
+       grey went flat, and a desaturated warm accent on a blue ground reads as rust rather
+       than orange. Lifting the paper and pulling most of the blue out of it fixes both. */
+    --paper-dawn: #efe9e2;   /* first light: warm and a little low */
+    --paper-day:  #f8f9fa;   /* full daylight: bright, barely cool */
+    --paper: color-mix(in oklab, var(--paper-day) calc(var(--p) * 100%), var(--paper-dawn));
+
+    --ink: #14171c;  --dim: #5a626d;  --rule: #d4d8de;
+    --brain: #0d5f50;
+    /* Two accents, because one cannot serve both jobs on a bright page: the vivid one is
+       for graphic marks and display numerals, where chroma is the point; the deeper one is
+       for small text, where it has to clear 4.5:1 against paper. */
+    --accent: #d9541a;
+    --accent-ink: #a83e0b;
+
     --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
     --sans: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
+    --ease: cubic-bezier(.22,.75,.2,1);
+    --t: .85s;
+
+    --gutter: 24px;
+    --margin: clamp(20px, 4vw, 64px);
+    --measure: 46ch;
+
+    /* The floor for small type, in two steps, so it is one knob rather than sixteen numbers
+       drifting downward. WCAG sets no minimum size — only that text survive 200% zoom — but
+       every design system does, and 10px cleared none of them: Apple floors at 11pt,
+       Material's smallest label is 11sp and its smallest body 12sp, GEL and GOV.UK stop at
+       12 and 14. --micro is for mono labels, which are letter-spaced and read a size larger
+       than they measure; --fine is for anything the reader has to read as a sentence. */
+    --micro: 12px;
+    --fine: 13px;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html { scroll-behavior: auto; }
-  body { font-family: var(--sans); background: #060609; overflow-x: hidden; }
-
-  /* crossfading background layers (dark landing → light body) */
-  #bk-dark, #bk-light { position: fixed; inset: 0; z-index: 0; }
-  #bk-dark  { background: radial-gradient(ellipse 60% 55% at 50% 50%, #15131f 0%, #060609 72%); }
-  #bk-light { background: radial-gradient(ellipse 80% 70% at 50% 42%, #faf8f2 0%, #efece3 100%); opacity: 0; }
-
-  /* the orb lives here, fixed, the whole site pivots around it */
-  #orb-layer { position: fixed; inset: 0; z-index: 1; cursor: default; }
-  #orb-layer.pokeable { cursor: pointer; }
-  #orb-layer.grabbable { cursor: grab; }
-  #orb-layer.grabbing  { cursor: grabbing; }
-  #orb-layer canvas { display: block; }
-
-  /* landing UI — fixed, fades out as you descend */
-  #ui { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
-
-  #floatR {
-    position: absolute; top: 46px; left: 50%; transform: translateX(-50%);
-    font-family: var(--mono); font-size: 14px; letter-spacing: .05em;
-    color: var(--dim); opacity: 0; transition: opacity .6s ease;
+  /* r and p are variables, so they are italic everywhere. <var> means exactly that, and
+     unlike <i> it does not collide with the bare <i> used as a colour swatch.
+     text-transform: none keeps them lowercase in the uppercase mono stat labels:
+     OBSERVED r, not OBSERVED R. */
+  var { font-style: italic; text-transform: none; font-family: inherit; }
+  html, body { height: 100%; }
+  body {
+    color: var(--ink); font-family: var(--sans);
+    overflow: hidden;               /* one beat, one screen. it never scrolls. */
+    display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
   }
-  #floatR.show { opacity: 1; }
-  #floatR b { color: var(--ink); font-weight: 500; }
 
+  /* The dawn is a tint, not a mode: warm and low, lifting to bright and neutral over the
+     first two beats, for the cost of one interpolated colour. Keeping it to a colour is
+     what lets the page stay committed to light throughout. */
+  .bk { position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background: var(--paper); }
+  /* A trace of warmth low in the frame while the light is still coming up. Kept very faint:
+     the paper is already warm at --p 0, so this only has to suggest a direction for the
+     light. */
+  #bk-horizon {
+    background: radial-gradient(ellipse 96% 44% at 50% 118%, #e0c3a0 0%, rgba(224,195,160,0) 70%);
+    opacity: calc((1 - var(--p)) * .5); mix-blend-mode: multiply;
+  }
+
+  /* ── chrome ───────────────────────────────────────────────────────────────────────
+     In the grid, not fixed on top of it, so the header and footer share their column
+     edges with the content. Fixed chrome is what makes a page float. */
+  .chrome {
+    display: grid; grid-template-columns: repeat(12, 1fr); gap: 0 var(--gutter);
+    align-items: center; padding: 22px var(--margin);
+    max-width: 1560px; width: 100%; margin: 0 auto;
+  }
+  #home {
+    grid-column: 1 / span 5;
+    font-family: var(--mono); font-size: var(--micro); letter-spacing: .26em;
+    text-transform: uppercase; color: var(--dim);
+    text-decoration: none; justify-self: start;
+    transition: color .2s;
+  }
+  #home:hover { color: var(--ink); }
+  /* One continuous bar along the bottom edge. A row of dashes at the top of the page is the
+     most slide-deck object there is: it counts slides, and it sits where a deck puts its
+     chrome. A full-width rule reads as progress through one continuous thing, and pinning it
+     to the edge takes it out of the layout. Still seekable: the hit area is a 16px band above
+     the bar, and clicking maps x straight onto a beat. */
+  #progress {
+    position: fixed; left: 0; right: 0; bottom: 0; height: 3px; z-index: 7;
+    background: var(--rule); cursor: pointer;
+  }
+  #progress::before { content: ""; position: absolute; left: 0; right: 0;
+    bottom: 0; height: 16px; }
+  #progressFill {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 0;
+    background: var(--accent); transition: width .5s var(--ease);
+  }
+  #progress:hover #progressFill { box-shadow: 0 0 0 1px var(--accent); }
+
+  #textToggle {
+    grid-column: 11 / span 2; justify-self: end;
+    font-family: var(--mono); font-size: var(--micro); letter-spacing: .14em;
+    text-transform: uppercase; color: var(--dim); background: none; border: 0;
+    padding: 4px 0; cursor: pointer; white-space: nowrap; transition: color .2s;
+  }
+  #textToggle:hover { color: var(--ink); }
+
+  footer.chrome { padding-top: 0; padding-bottom: 30px; }
+  /* Reserved height: this slot is empty on most beats and gains a line on the ones that
+     offer something, and #slot is the flex child that pays for it, so an unreserved hint
+     lifts the orb the moment an affordance appears. */
   #hint {
-    position: absolute; bottom: 8%; left: 50%; transform: translateX(-50%);
-    font-size: 13px; letter-spacing: .09em; color: var(--dim); white-space: nowrap;
-    animation: breathe 2.8s ease-in-out infinite;
+    font-family: var(--mono); font-size: var(--micro); letter-spacing: .12em;
+    color: var(--dim); opacity: 0; transition: opacity .5s; pointer-events: none;
+    grid-column: 1 / span 8; line-height: 1.34; min-height: 1.34em;
   }
-  #hint.hidden { opacity: 0; transition: opacity .5s ease; }
-  @keyframes breathe { 0%,100% { opacity: .3 } 50% { opacity: .8 } }
-  @media (prefers-reduced-motion: reduce) { #hint { animation: none; opacity: .6; } #panel { transition: none; } }
+  #hint.show { opacity: 1; }
+  /* The idle nudge, attached to the button instead of floating in the footer as a caption
+     nobody connected to anything. A halo rather than a fade: the label has to stay legible
+     while it breathes, because the label is the instruction now. */
+  @keyframes waiting {
+    0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 30%, transparent); }
+    70%  { box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent) 0%, transparent); }
+    100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); }
+  }
+  #next.waiting { animation: waiting 2.6s ease-out infinite; }
 
-  #door {
-    position: absolute; left: 22px; bottom: 20px; pointer-events: auto;
-    font-family: var(--sans); font-size: 12px; color: var(--dim);
-    background: none; border: none; cursor: pointer; border-bottom: 1px dotted #3a3a47; padding: 2px 0;
-  }
-  #door:hover { color: var(--ink); border-bottom-color: var(--ink); }
+  .controls { grid-column: 11 / span 2; justify-self: end;
+    display: flex; align-items: center; gap: 9px; }
+  /* The controls own two columns, which around 1000px is narrower than a label like "count
+     them" wants. As shrinkable flex items the buttons wrap their own text onto a second
+     line. They are the instruction, so they do not give. */
+  button.nav { flex: 0 0 auto; white-space: nowrap;
+    font-family: var(--mono); font-size: 12.5px; letter-spacing: .06em; cursor: pointer;
+    background: none; border: 1px solid var(--rule); color: var(--ink);
+    border-radius: 999px; padding: 11px 21px;
+    transition: border-color .2s, background .2s, color .2s; }
+  button.nav:hover:not(:disabled) { border-color: var(--ink); }
+  button.nav:disabled { opacity: .3; cursor: default; }
+  #next { border-color: var(--accent); color: var(--accent-ink); }
+  #next::after { content: "  \25B8"; }
+  #next[data-mode="restart"]::after { content: "  \21BA"; }
+  #next:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
-  #panel {
-    position: absolute; top: 0; right: 0; width: 380px; height: 100%; pointer-events: auto;
-    padding: 34px 30px; display: flex; flex-direction: column; gap: 16px;
-    background: rgba(8,8,13,.82); backdrop-filter: blur(8px); border-left: 1px solid #1a1a24;
-    transform: translateX(110%); transition: transform .7s cubic-bezier(.2,.8,.2,1);
+  /* ── the grid, and the four stage plans ───────────────────────────────────────────
+     A deck is one layout with the contents swapped. A small closed vocabulary of staging
+     decisions instead is what lets beats 5 and 8 take the whole frame, which is what those
+     two have always needed. */
+  .app {
+    display: grid; grid-template-columns: repeat(12, 1fr); gap: 0 var(--gutter);
+    max-width: 1560px; width: 100%; margin: 0 auto; padding: 0 var(--margin);
+    min-height: 0;
   }
-  #panel.show { transform: translateX(0); }
-  .grid2 { display: flex; gap: 24px; }
-  .readout { font-family: var(--mono); }
-  .readout .lbl { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
-  .readout .val { font-size: 30px; font-weight: 500; line-height: 1.2; color: var(--ink); }
-  .val.warm { color: var(--accent); }
-  #hist { width: 100%; height: auto; }
-  .axis text { fill: var(--dim); font-family: var(--mono); font-size: 10px; }
-  .axis path, .axis line { stroke: #28283400; }
-  .axis .domain { stroke: #2a2a36; }
-  .obs-line { stroke: var(--accent); stroke-width: 2; }
-  .lbl-obs  { fill: var(--accent); font-family: var(--mono); font-size: 10px; }
-  .lbl-null { fill: var(--dim); font-family: var(--mono); font-size: 10px; }
-  .bar { fill: var(--bar); }
-  p.note { font-size: 12px; line-height: 1.55; color: var(--dim); margin-top: auto; }
-  p.verdict { font-size: 13px; line-height: 1.6; color: var(--ink); opacity: 0; transition: opacity .9s ease; }
-  p.verdict.show { opacity: 1; }
-  p.verdict .method { color: var(--dim); }
-  p.verdict .method a { color: var(--dim); text-underline-offset: 2px; }
-  p.verdict .method a:hover { color: var(--ink); }
+  /* above the stage, which is now a full-viewport fixed layer. The bars are mostly empty and
+     span the full width, and #pool's z-index puts everything inside it — the colophon's links
+     included — into a stacking context below them, so an unguarded bar swallows clicks on
+     anything it happens to overlap. Only the controls themselves take the pointer. */
+  header.chrome, footer.chrome { position: relative; z-index: 2; pointer-events: none; }
+  .chrome a, .chrome button { pointer-events: auto; }
+  #pool, #work { position: relative; z-index: 1; }
 
-  /* body arrival — fixed, fades IN as you descend (placeholder for now) */
-  #arrival {
-      position: fixed; left: 50%; bottom: 8%; transform: translateX(-50%);
-      z-index: 2; pointer-events: none; opacity: 0;
-      font-family: var(--mono); font-size: 13px; letter-spacing: .09em; color: var(--ink-dk);
-      white-space: nowrap;
+  #pool { display: flex; flex-direction: column; min-height: 0; min-width: 0;
+    pointer-events: none; }
+  #pool a, #pool button { pointer-events: auto; }
+  #work {
+    display: flex; flex-direction: column; gap: 22px;
+    min-height: 0; min-width: 0; overflow: hidden;
+    padding-top: 6vh;                /* anchored from the top. vertical centring is what
+                                        made every element's position depend on its
+                                        neighbours' heights, i.e. float. */
+    opacity: 0; transition: opacity .55s var(--ease);
   }
-  #arrival.show { animation: breathe 2.8s ease-in-out infinite; }  /* breathe ONLY once in the body */
 
-  /* the brain's monologue — three poked lines, newest in focus at the hint's spot,
-     older ones drifted up and dimmed. clears when the toy takes over. */
-  #intro {
-    position: fixed; left: 0; right: 0; bottom: 8%; z-index: 2;
-    text-align: center; pointer-events: none;
-  }
-  .intro-line {
-    font-family: var(--mono); font-size: 13px; letter-spacing: .04em;
-    color: var(--ink-dk); line-height: 1.5; margin: 7px 0;
-    opacity: 0; transform: translateY(6px);
-    transition: opacity .55s ease, transform .55s ease;
-  }
-  .intro-line.in   { opacity: 1; transform: translateY(0); }
-  .intro-line.past { opacity: .26; transform: translateY(0); }
-  #intro.gone .intro-line { opacity: 0; transition: opacity .5s ease; }
+  body[data-plan="overture"] #pool { grid-column: 1 / -1; }
+  body[data-plan="overture"] #work { display: none; }
 
-  /* the closer — scroll past the toy and the orb recedes; the thesis arrives bare,
-     out of the brain's first-person voice. gated on having tried the spin. */
+  body[data-plan="split"] #pool { grid-column: 1 / span 6; }
+  body[data-plan="split"] #work { grid-column: 8 / span 5; opacity: 1; }
+
+  /* beat 5 — the reversal. The ruin gets the frame; the p-value it earned stays pinned
+     beside it, because the contradiction has to be in one glance. */
+  body[data-plan="reveal"] #pool { grid-column: 1 / span 9; }
+  body[data-plan="reveal"] #work { grid-column: 10 / span 3; opacity: 1; justify-content: center; padding-top: 0; }
+
+  /* beat 8 — the frame people screenshot. The orbs are not the argument here. */
+  body[data-plan="figure"] #pool { grid-column: 1 / span 3; }
+  body[data-plan="figure"] #work { grid-column: 4 / span 9; opacity: 1; }
+
+  /* The stage is the whole viewport and never moves. Where the orbs *appear* is set by
+     #slot — an empty grid cell the camera rig frames itself into — so the orbs can follow
+     the columns without the canvas ever having an edge for a seam to live on. */
+  #stage { position: fixed; inset: 0; z-index: 0; }
+  #stage canvas { display: block; width: 100%; height: 100%; }
+  #stage.grabbable { cursor: grab; }
+  #stage.grabbing { cursor: grabbing; }
+  #stage.probing { cursor: crosshair; }
+  #slot { flex: 1 1 auto; min-height: 0; pointer-events: none; }
+
+  /* map tags — just under the orbs */
+  #legend {
+    position: relative; z-index: 2; flex: 0 0 auto; margin-bottom: 14px;
+    display: flex; gap: 18px; justify-content: center; flex-wrap: wrap;
+    font-family: var(--mono); font-size: var(--micro); letter-spacing: .1em; color: var(--dim);
+    opacity: 0; transition: opacity .5s; pointer-events: none;
+  }
+  #legend.show { opacity: 1; }
+  #legend span { display: flex; align-items: center; gap: 6px; }
+  #legend i { width: 8px; height: 8px; border-radius: 50%; }
+  #legend em { font-style: normal; color: var(--dim); letter-spacing: .06em; opacity: .8; }
+  /* the ends of the trimmed ramps in orb.js — see `slice` there */
+  .sw-narrator { background: linear-gradient(135deg, #393d79, #67bb8e); }
+  .sw-partner { background: linear-gradient(135deg, #3a548b, #fde725); }
+
+  /* the brain's voice — under the orb, because attribution is proximity */
+  #narration {
+    position: relative; z-index: 2; flex: 0 0 auto; min-height: 104px;
+    padding: 0 8px 20px; text-align: center; pointer-events: none;
+  }
+  body[data-plan="overture"] #narration { min-height: 138px; padding-bottom: 4%; }
+  #narration .line {
+    font-family: var(--mono); font-size: 13.5px; line-height: 1.6; color: var(--brain);
+    letter-spacing: .01em; margin: 7px auto; max-width: 46ch; max-height: 8em;
+    text-wrap: balance;   /* short blocks, so a single orphaned word is the usual failure */
+    opacity: 0; transform: translateY(5px);
+    transition: opacity .55s var(--ease), transform .55s var(--ease), color .6s linear,
+                max-height .45s var(--ease), margin .45s var(--ease);
+    text-wrap: balance;
+  }
+  body[data-plan="overture"] .line { font-size: 15.5px; max-width: 42ch; }
+  #narration .line.in { opacity: 1; transform: none; }
+  /* past lines stay legible: looking at the orb must never cost you a line */
+  #narration .line.past { opacity: .58; transform: none; }
+  /* …but the stack is bounded. The oldest line collapses as well as fades, so the column
+     gives its height back to the orbs instead of holding an empty gap. */
+  #narration .line.gone { opacity: 0; max-height: 0; margin-top: 0; margin-bottom: 0;
+    overflow: hidden; }
+  #narration em { font-style: normal; color: var(--ink);
+    border-bottom: 1px solid color-mix(in srgb, var(--brain) 60%, transparent); }
+
+  /* A glossed term. The narration layer is pointer-transparent so the orb stays draggable
+     through it, so the gloss opts back in by itself. Hover and focus both open it; focus is
+     what reaches it by keyboard, and what works on touch, where there is no hover. */
+  #narration .gloss {
+    pointer-events: auto; cursor: help; position: relative;
+    border-bottom: 1px dashed color-mix(in srgb, var(--brain) 75%, transparent);
+  }
+  #narration .gloss::after {
+    content: attr(data-tip);
+    position: absolute; bottom: calc(100% + 10px); left: 50%; transform: translateX(-50%) translateY(4px);
+    width: max-content; max-width: min(34ch, 74vw);
+    font-family: var(--sans); font-size: 12.5px; line-height: 1.45; letter-spacing: 0;
+    text-align: left; color: var(--ink); background: var(--paper-day);
+    border: 1px solid var(--rule); border-radius: 9px; padding: 9px 12px;
+    box-shadow: 0 14px 32px -18px rgba(12,18,28,.6);
+    opacity: 0; visibility: hidden; transition: opacity .22s var(--ease), transform .22s var(--ease);
+    z-index: 5;
+  }
+  #narration .gloss:hover::after,
+  #narration .gloss:focus::after {
+    opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0);
+  }
+  #narration .gloss:focus { outline: none; }
+  #narration .gloss:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+
+  /* the closer */
   #closer {
-    position: fixed; left: 50%; top: 24%; transform: translate(-50%, -50%);   /* high, clear of the sunk orb below */
-    z-index: 2; pointer-events: none; opacity: 0;
-    width: min(620px, 86vw); text-align: center;
-    pointer-events: auto;
+    position: absolute; z-index: 2; left: 50%; top: 7%; transform: translateX(-50%);
+    width: min(56ch, 84%); text-align: center; opacity: 0;
+    transition: opacity .8s var(--ease); pointer-events: none;
   }
-  #closer .lead {
-    font-family: var(--mono); font-size: 12.5px; letter-spacing: .02em;
-    color: var(--dim-dk); line-height: 1.6; margin-bottom: 14px;
+  #closer.show { opacity: 1; }
+  /* Held over the swap into the finale: the two compositions have nothing in common to
+     tween between, so the text crosses over dark and only the orb travels. */
+  #closer.leaving { opacity: 0; transition: opacity .35s var(--ease); }
+  /* The figure's orb is a thumbnail in the corner — present enough to own the line it is
+     saying, small enough that the field is the picture. It swells from here into the poster. */
+  body.closing #slot { position: fixed; left: auto; top: auto; min-height: 0;
+    right: var(--margin); bottom: 146px;
+    width: clamp(110px, 13vw, 170px); height: clamp(110px, 13vw, 170px); }
+  /* On the last beat the closer joins the column instead of floating over it. In flow the
+     text takes exactly the height it needs, #slot is the flex child that gives, and the orb
+     frames itself into whatever band is left underneath. Any overlay here would have to
+     guess that height, and the guess breaks the moment a line is added or the window is
+     short: the stack overruns the pool and the orb lands on the provenance. */
+  /* On the last beat the closer joins the column. The figure is the widest thing in the
+     piece, so it gets the frame rather than the 56ch measure the prose reads at. */
+  body.closing #closer { position: static; order: -1; transform: none; flex: 0 0 auto;
+    width: min(1120px, 94%); margin: 0 auto; }
+  body.closing #pool { justify-content: center; }
+  /* Nothing below the orb on this beat wants the space it is holding open against reflow. */
+  body.closing #legend, body.closing #narration, body.closing #hint { display: none; }
+  /* The caption is the argument, so it reads at the size the paper's claims do, and the
+     numbers sit inside it. Reserved height: the sentence gains two clauses as the field
+     runs, and letting it grow would walk the figure up the screen mid-count. */
+  #closer .lead { margin: 20px auto 0; max-width: 62ch; min-height: 3.2em;
+    font-size: 17.5px; line-height: 1.55; letter-spacing: -.005em;
+    color: var(--ink); text-wrap: pretty; }
+  #closer .lead b { font-weight: 600; color: var(--accent-ink);
+    font-variant-numeric: tabular-nums; }
+  #closer canvas { display: block; width: 100%; height: clamp(180px, 40vh, 440px);
+    opacity: 0; transition: opacity .7s var(--ease); }
+  #closer canvas.show { opacity: 1; }
+  /* Folded into the sentence, because this is where 7,140 is being claimed. */
+  #closer .cite { margin-left: .5ch; font-size: var(--fine); color: var(--dim);
+    text-underline-offset: 3px; pointer-events: auto; white-space: nowrap;
+    opacity: 0; transition: opacity .6s var(--ease); }
+  #closer .cite.show { opacity: 1; }
+  #closer .cite:hover { color: var(--ink); }
+
+  /* ── the narrator's voice ─────────────────────────────────────────────────────────
+     Its line on the figure, then the quips on the poster. A green mono line adrift in the
+     page is attributed to the brain only by the reader's goodwill, so left/top are written
+     by beats.js from the orb's projected sphere; see placeAside. Sized to its own text, so
+     that "centred under the orb" centres the line and not a wide empty box. */
+  #closerBrain {
+    position: fixed; left: 0; top: 0; z-index: 3;
+    width: max-content; max-width: min(46ch, 46vw); text-align: center; text-wrap: balance;
+    font-family: var(--mono); font-size: 13.5px; line-height: 1.6;
+    color: var(--brain); letter-spacing: .01em;
+    opacity: 0; transform: translateY(5px); pointer-events: none;
+    transition: opacity .55s var(--ease), transform .55s var(--ease);
   }
-  #closer .stat {
-    font-family: var(--sans); font-size: 14px; letter-spacing: .02em;
-    color: var(--dim-dk); line-height: 1.65; margin-bottom: 24px;
+  #closerBrain.show { opacity: 1; transform: none; }
+
+  /* ── the colophon ─────────────────────────────────────────────────────────────────
+     Poster only, bottom left under the thesis: what the piece is made of, what to copy,
+     and where the rest of the work is. One voice, one corner. */
+  #colophon { position: fixed; left: var(--margin); bottom: 30px; z-index: 3;
+    max-width: min(46ch, 44%); display: flex; flex-direction: column;
+    align-items: flex-start; gap: 10px;
+    opacity: 0; transition: opacity .8s var(--ease); pointer-events: none; }
+  #colophon.show { opacity: 1; }
+  #colophon .src { font-size: var(--fine); line-height: 1.5; color: var(--dim); text-wrap: pretty; }
+  #colophon a { font-size: var(--fine); color: var(--dim); text-underline-offset: 3px;
+    pointer-events: auto; }
+  #colophon a:hover { color: var(--ink); }
+  /* The control shows its own payload. A "share" button that reveals what it did only after
+     the click is asking to be trusted with the clipboard; this one is readable first. */
+  #share { display: flex; align-items: flex-end; gap: 12px; text-align: left;
+    border: 1px solid var(--rule); border-radius: 8px; padding: 9px 11px; }
+  #share:hover { border-color: var(--dim); }
+  #share .payload { display: flex; flex-direction: column; gap: 1px;
+    font-size: var(--fine); line-height: 1.45; color: var(--dim);
+    user-select: text; pointer-events: auto; }
+  #share .payload b { font-weight: 600; color: var(--ink); }
+  #share .act { font-family: var(--mono); font-size: var(--micro); letter-spacing: .14em;
+    text-transform: uppercase; color: var(--accent-ink); white-space: nowrap;
+    background: none; border: 0; padding: 2px 0; cursor: pointer; pointer-events: auto;
+    text-decoration: underline; text-underline-offset: 3px; transition: color .2s; }
+  #share .act:hover { color: var(--ink); }
+  #share.done .act { color: var(--brain); }
+  #thesis {
+    margin-top: 20px; font-weight: 700; letter-spacing: -.024em; line-height: 1.12;
+    font-size: clamp(30px, 4.2vw, 50px); color: var(--ink);
+    opacity: 0; transform: translateY(10px);
+    transition: opacity .9s var(--ease), transform .9s var(--ease); text-wrap: balance;
   }
-  #closer .stat b { color: var(--ink-dk); font-weight: 600; }
-  #closer .stat .cite { color: var(--dim-dk); }
-  #closer .stat .cite:hover { color: var(--ink-dk); }
-  #closer .thesis {
-    font-family: var(--sans); font-weight: 600; letter-spacing: -0.01em;
-    font-size: clamp(20px, 3.4vw, 30px); line-height: 1.3; color: var(--ink-dk);
+  #thesis.show { opacity: 1; transform: none; }
+
+  /* ── the finale ───────────────────────────────────────────────────────────────────
+     The evidence has been watched, so it clears and the frame opens: the orb takes the
+     right of the viewport at full size, the thesis takes the left column, and nothing is
+     on the centre line any more. The orb glides there on its own — the rig damps toward
+     whatever box #slot is, and #slot has just become most of the screen. */
+  body.finale #closer .evidence { display: none; }
+  body.finale #pool { justify-content: center; }
+  body.finale #closer { width: auto; max-width: min(46%, 620px); margin: 0 0 12vh;
+    text-align: left; }
+  /* The measure has to be in the thesis's own em. `ch` resolves against the parent's 16px,
+     which display words simply overflow. */
+  body.finale #thesis { margin-top: 0; max-width: 8.5em; text-wrap: pretty;
+    font-size: clamp(34px, 5.2vw, 68px); line-height: 1.02; letter-spacing: -.03em; }
+  /* width/height have to go back to auto: the thumbnail rule sets both, and an element with
+     a fixed width plus left and right is over-constrained, so `right` is simply dropped and
+     the orb stays thumbnail-sized in the corner. */
+  body.finale #slot { position: fixed; inset: -4% -6% 96px 36%; width: auto; height: auto; }
+
+  /* ── the paper's voice ────────────────────────────────────────────────────────────── */
+  #paper { opacity: 0; transition: opacity .6s var(--ease); }
+  #paper.show { opacity: 1; }
+  #paper .claim { font-size: 17.5px; line-height: 1.55; letter-spacing: -.005em;
+    color: var(--ink); text-wrap: pretty; max-width: var(--measure); }
+  #paper .detail { font-size: 14.5px; line-height: 1.6; color: var(--dim);
+    margin-top: 12px; max-width: 48ch; text-wrap: pretty; }
+  #paper .truth { font-size: 14.5px; line-height: 1.6; margin-top: 16px; padding-top: 16px;
+    border-top: 1px solid var(--rule); color: var(--ink); max-width: var(--measure); }
+  /* Laid out but not yet earned. Hidden rather than absent, so the column holds its full
+     height from the first frame and a reveal never resizes the chart under it. */
+  #paper .pending { visibility: hidden; }
+
+  /* the numbers are the argument, so they get display scale */
+  #stat { opacity: 0; transition: opacity .4s; }
+  #stat.show { opacity: 1; }
+  #stat .label { font-family: var(--mono); font-size: var(--micro); letter-spacing: .18em;
+    text-transform: uppercase; color: var(--dim); margin-bottom: 6px; }
+  #stat .value { font-weight: 600; letter-spacing: -.038em;
+    font-size: clamp(40px, 5.4vw, 72px); line-height: .92; font-variant-numeric: tabular-nums; }
+  #stat .value.warm { color: var(--accent); }
+  /* On the figure plan the multiple only arrives once the growth starts, so this box is empty
+     when the beat opens. Reserved in em, which tracks whichever clamped value size is in play,
+     so the chart sharing the column holds one height for the whole beat. */
+  body[data-plan="figure"] #stat .label { min-height: 1.34em; }
+  body[data-plan="figure"] #stat .value { min-height: .92em; }
+  #stat .value.counting { font-weight: 500; font-size: clamp(28px, 3.4vw, 44px); color: var(--dim); }
+
+  /* charts fill their columns. A chart pinned to a pixel width floats inside whatever box
+     it lands in; a chart that spans columns has a relationship to the page. */
+  /* #readout may shrink, so what is inside it has to shrink too, which is the only reason it
+     is a flex column. A canvas with a hard pixel height overruns the bottom of a shrunk box
+     and paints across #stat and #compare below. The heights here are a basis, full size
+     whenever the column can afford it. The hint holds: one line, and it is the instruction. */
+  /* overflow is a floor, not a layout tool. #readout is the one item in the column that gives,
+     and once the canvas is down to its own min-height the two of them together are taller than
+     the box — flex does not clip, so the hint used to paint across the stat below it. Clipping
+     turns the worst case into a short chart instead of two lines of text on top of each other.
+     Everything under this comment exists so that it never has to. */
+  #readout { position: relative; display: flex; flex-direction: column;
+    flex: 0 1 auto; min-height: 0; overflow: hidden; }
+  #readout canvas { display: block; width: 100%; flex: 0 1 auto; min-height: 116px;
+    height: clamp(200px, 30vh, 320px); }
+  body[data-plan="figure"] #readout canvas { height: clamp(280px, 46vh, 520px); }
+  #readout canvas.hidden { display: none; }
+  #readout.empty { display: none; }
+  /* An instruction belongs next to the thing it is about. The footer hint is in the right
+     place for the orb, which sits in the other column — a reader looking at the chart is
+     not going to find it down there. */
+  /* Reserved height, like the closer's lead: the hint arrives partway through a beat, and an
+     empty slot that grows a line when it does would step the chart down mid-argument. */
+  #readoutHint { flex: 0 0 auto; margin-top: 9px; font-family: var(--mono); font-size: var(--micro);
+    letter-spacing: .1em; color: var(--dim); opacity: 0; transition: opacity .5s;
+    line-height: 1.34; min-height: 1.34em; }
+  #readoutHint.show { opacity: 1; }
+  #hist.browsable { cursor: crosshair; }
+
+  #compare { display: flex; gap: 38px; flex-wrap: wrap; opacity: 0; transition: opacity .5s; }
+  #compare.show { opacity: 1; }
+  #compare .k { font-family: var(--mono); font-size: var(--micro); letter-spacing: .16em;
+    text-transform: uppercase; color: var(--dim); display: flex; align-items: center; gap: 7px; }
+  #compare .k i { width: 9px; height: 9px; border-radius: 2px; }
+  #compare .v { font-weight: 600; font-size: 28px; letter-spacing: -.024em;
+    margin-top: 5px; font-variant-numeric: tabular-nums; }
+
+  /* ── the results line ─────────────────────────────────────────────────────────────
+     Beat 8 is the only beat carrying a claim, a detail, a truth, a chart, a display stat *and*
+     a compare row. Stacked, that column wants ~450px, which the frame has whenever it is tall
+     and wide and does not have at either edge of what the gate lets through. The two numeric
+     blocks are the pair that can share a row: 3.6× and the two p-values are one line of
+     results, and putting them side by side gives the column back ~70px without dropping a word.
+     Only where it is needed — with the room, they read better stacked. */
+  @media (max-width: 900px), (max-height: 620px) {
+    body[data-plan="figure"] #work { display: grid; align-content: start;
+      grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto;
+      column-gap: 34px; }
+    body[data-plan="figure"] #paper,
+    body[data-plan="figure"] #readout { grid-column: 1 / -1; }
+    body[data-plan="figure"] #stat { grid-column: 1; }
+    /* bottom-aligned, so the two value rows sit on one baseline whatever the labels wrap to */
+    body[data-plan="figure"] #compare { grid-column: 2; align-self: end; }
   }
 
-  /* the orb talks back if you keep poking it after the toy — orange, above the orb */
-  #quip {
-    position: fixed; top: 9%; left: 50%; transform: translateX(-50%); z-index: 2;
-    pointer-events: none; text-align: center; width: min(520px, 84vw);
-    font-family: var(--mono); font-size: 13px; letter-spacing: .03em;
-    color: var(--accent); opacity: 0; transition: opacity .4s ease;
-  }
-  #quip.show { opacity: 1; }
+  #sheet { position: fixed; inset: 0; z-index: 9; display: none; place-items: center;
+    background: rgba(10,12,16,.55); backdrop-filter: blur(3px); }
+  #sheet.show { display: grid; }
+  .sheet-card { position: relative; background: var(--paper-day); border: 1px solid var(--rule);
+    color: var(--ink);
+    border-radius: 14px; padding: 34px 38px; margin: 24px; max-width: 66ch;
+    max-height: 82vh; overflow: auto; box-shadow: 0 30px 70px -30px rgba(12,18,28,.5); }
+  #sheetClose { position: absolute; top: 12px; right: 16px; background: none; border: 0;
+    font-size: 22px; line-height: 1; color: var(--dim); cursor: pointer; }
+  #sheetClose:hover { color: var(--ink); }
+  #argument { font-size: 14px; line-height: 1.7; color: var(--ink); }
+  #argument h3 { font-family: var(--mono); font-size: var(--micro); letter-spacing: .14em;
+    text-transform: uppercase; color: var(--accent-ink); margin: 18px 0 6px; }
+  #argument h3:first-child { margin-top: 0; }
 
-  /* a shy down-arrow that surfaces only once all three tabs are tried and the user idles —
-     betrays that there's an ending below without nagging anyone who's still exploring */
-  #bodydown {
-    position: fixed; left: 50%; bottom: 4%; transform: translateX(-50%); z-index: 2;
-    font-size: 18px; color: var(--dim-dk); opacity: 0; pointer-events: none;
-  }
-  #bodydown.show { animation: bop 1.8s ease-in-out infinite; }
-  @keyframes bop {
-    0%, 100% { transform: translate(-50%, 0); opacity: .4; }
-    50%      { transform: translate(-50%, 6px); opacity: .85; }
+  /* ── narrow ───────────────────────────────────────────────────────────────────────
+     The columns become rows, and the orbs must not collapse to thumbnails when they do.
+     #slot is the flex child that gives, so once the work column stacks underneath instead of
+     beside, nothing is left over for the stage. A floor on the slot and a shorter chart keep
+     the object the size of the argument: the reader loses air, not orbs. */
+  @media (max-width: 900px) {
+    :root { --gutter: 16px; }
+    .app { grid-template-columns: 1fr; gap: 12px 0; }
+    body[data-plan] #pool, body[data-plan] #work { grid-column: 1 / -1; }
+    /* Two explicit rows in a fixed ratio. Content-sized rows plus `#pool { min-height: 0 }`
+       let the pool shrink below what its flex children need, and the narration spills onto
+       the work column. Bounding the row makes #slot the thing that gives, which is what
+       `flex: 1 1 auto` is for. Overture keeps one row: #work is display:none there, and a
+       second row would hold half the screen open for nothing. */
+    body[data-plan="split"] .app,
+    body[data-plan="reveal"] .app { grid-template-rows: minmax(0, 1.08fr) minmax(0, 1fr); }
+    /* Beat 8 gets its own split. Wide, the figure plan hands the chart nine columns of twelve
+       because the orbs are not the argument there; stacked, the same order of priority has to
+       hold, or the one beat where they matter least is the one where they take the larger band
+       and the argument underneath has nowhere to go. */
+    body[data-plan="figure"] .app { grid-template-rows: minmax(0, .85fr) minmax(0, 1fr); }
+    body[data-plan="split"] #work,
+    body[data-plan="figure"] #work,
+    body[data-plan="reveal"] #work { padding-top: 0; justify-content: flex-start; opacity: 1; }
+    #work { gap: 12px; }
+    /* The floor is what stops the chart disappearing, not what makes it readable — a histogram
+       still reads at 96px, and the 20px this gives back is 20px the argument under it keeps. */
+    #readout canvas,
+    body[data-plan="figure"] #readout canvas { height: clamp(140px, 21vh, 200px);
+      min-height: 96px; }
+    /* The rule above the truth is a separator. In a column this tight, 32px of air is more than
+       the line it draws is worth. */
+    #paper .truth { margin-top: 11px; padding-top: 11px; }
+    #stat .value { font-size: clamp(30px, 11vw, 44px); }
+    #stat .value.counting { font-size: clamp(24px, 8vw, 32px); }
+    #paper .claim { font-size: 15.5px; }
+    #paper .detail, #paper .truth { font-size: 13px; }
+    #compare { gap: 24px; }
+    #compare .v { font-size: 22px; }
+    #narration { min-height: 0; padding-bottom: 10px; }
+    body[data-plan="overture"] #narration { min-height: 0; padding-bottom: 10px; }
+    body[data-plan="overture"] .line { font-size: 14px; }
+    #closer { top: 4%; width: 92%; }
+    body.closing #closer { width: 92%; }
+    /* One column, so the thumbnail orb and the narrator's line go under the figure rather
+       than into a corner beside it, and the colophon runs the full measure. Both of the
+       pinned blocks come back into the flow: bottom-left is one place, and two things
+       pinned to it land on each other. */
+    body.closing #slot { position: static; width: auto; height: clamp(96px, 15vh, 140px);
+      margin-top: 12px; }
+    /* Scoped to the closing beats on purpose. Unscoped, these two become in-flow flex
+       children of #pool on every narrow beat — invisible at opacity 0, but still 158px of
+       colophon sitting where the orbs' band should be, which collapses #slot to zero. */
+    body.closing #closerBrain { position: static; right: auto; left: auto; bottom: auto;
+      width: auto; max-width: none; text-align: left; margin-top: 14px; }
+    /* No room for two columns, so the poster stacks: the orb takes the top of the frame and
+       the thesis the band under it. Off the centre line is the part that does not survive
+       here; the orb at full size is the part that matters. */
+    body.finale #pool { justify-content: flex-end; }
+    body.finale #slot { position: fixed; inset: 0 0 46% 0; width: auto; height: auto;
+      margin: 0; }
+    body.finale #closer { max-width: none; margin: 0; }
+    body.finale #thesis { font-size: clamp(28px, 7.6vw, 42px); max-width: none; }
+    /* Thesis, then the brain's offer, then the colophon — one column, in reading order. */
+    body.finale #colophon { position: static; max-width: none; margin-top: 18px;
+      padding-bottom: 4px; }
+
+    /* Twelve columns is more grid than a phone footer can hold, so the hint gets its own
+       row above the controls rather than colliding with them. */
+    footer.chrome { grid-template-columns: 1fr auto; row-gap: 6px; padding-bottom: 20px; }
+    #hint { grid-column: 1 / -1; grid-row: 1; }
+    .controls { grid-row: 2; }
+    .controls { grid-column: 2; grid-row: 2; }
+    header.chrome { grid-template-columns: 1fr auto; }
+    #home { grid-column: 1; }
+    #textToggle { grid-column: 2; }
   }
 
-  /* colophon — fades in at the very bottom of the scroll, under the closer */
-  #colophon {
-    position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); z-index: 2;
-    opacity: 0; pointer-events: none; text-align: center; width: min(640px, 88vw);
-    font-family: var(--mono); font-size: 11.5px; line-height: 1.7; color: var(--dim-dk);
-  }
-  #colophon a { color: var(--dim-dk); text-underline-offset: 2px; }
-  #colophon a:hover { color: var(--ink-dk); }
-  #colophon .more { margin-top: 8px; }
-
-  /* the three-way toy — fades in after the poke-reveal */
-  #toy {
-    position: fixed; left: 0; right: 0; bottom: 7%; z-index: 2;
-    text-align: center; opacity: 0; pointer-events: none; transition: opacity .6s ease;
-  }
-  #toy.show { opacity: 1; }
-  #toggles { display: inline-flex; gap: 6px; pointer-events: auto; }
-  #toggles button {
-    font-family: var(--mono); font-size: 13px; letter-spacing: .04em; color: var(--dim-dk);
-    background: none; border: none; border-bottom: 1.5px solid transparent;
-    padding: 10px 16px; cursor: pointer;
-  }
-  #toggles button:hover { color: var(--ink-dk); }
-  #toggles button.active { color: var(--ink-dk); border-bottom-color: var(--accent); }
-  #toymsg {
-    margin-top: 16px; font-family: var(--mono); font-size: 13px; color: var(--dim-dk);
-    min-height: 1.3em; padding: 0 24px; letter-spacing: .01em;
+  /* ── short windows ────────────────────────────────────────────────────────────────
+     The figure is the tallest thing in the piece: a lead, a field, a display-size count and
+     a credit. Air gives first — the gaps close and the field takes the cut, since it is the
+     one element that reads at any height. */
+  @media (max-height: 720px) {
+    body.closing #closer { margin-top: 0; }
+    #closer canvas { height: clamp(110px, 24vh, 200px); margin-top: 12px; }
+    #closer .tally { margin-top: 8px; min-height: 3.4em; }
+    #closer .count { font-size: clamp(28px, 4vw, 44px); }
+    #closer .cite { margin-top: 10px; }
+    #thesis { margin-top: 12px; font-size: clamp(26px, 3.4vw, 36px); }
+    body.closing #slot { bottom: 120px; width: clamp(90px, 10vw, 130px);
+      height: clamp(90px, 10vw, 130px); }
   }
 
-  /* scroll hint to enter the body — appears after the spin completes */
-  #descend {
-    position: absolute; bottom: 8%; left: 50%; transform: translateX(-50%);
-    font-size: 12px; letter-spacing: .12em; color: var(--dim); opacity: 0;
+  /* ── short and wide ───────────────────────────────────────────────────────────────
+     A desktop window pulled down to half its height, which the gate lets through at 480 and
+     which the columns are otherwise sized for a laptop's worth of. Scoped past the narrow
+     query rather than layered on top of it: the gate makes the two frames mutually exclusive
+     (narrow needs 800 of height), and a rule that could land in either is a rule that has to
+     be read twice. What gives is the same as it is up there — air, then the chart's basis. */
+  @media (min-width: 901px) and (max-height: 620px) {
+    #work { gap: 12px; padding-top: 2vh; }
+    /* A fraction of the frame rather than a constant. The floor is only there to keep the chart
+       from vanishing, and how much of the window a chart may not fall below is the honest way
+       to say that — 116px is most of a 480px window's work column. */
+    #readout canvas,
+    body[data-plan="figure"] #readout canvas { height: clamp(120px, 26vh, 320px);
+      min-height: 16vh; }
+    #paper .detail { margin-top: 8px; }
+    #paper .truth { margin-top: 11px; padding-top: 11px; }
+    /* Display numerals scaled off the width alone put a 65px figure in a 480px-tall window. */
+    #stat .value { font-size: clamp(28px, 3.2vw, 44px); }
+    #compare .v { font-size: 22px; }
+  }
+
+  /* ── the gate ─────────────────────────────────────────────────────────────────────
+     Shown when the frame cannot hold the piece. The test is the frame, not the device: a
+     fixed width gets iPad mini wrong in one orientation and a half-width desktop window wrong
+     in the other. Two ways it fits, side by side (≥900 wide) or stacked (≥600 wide and ≥800
+     tall); anything else is gated. The query lives in beats.js as GATE_Q. */
+  /* A first-run screen, in the order those are read: masthead, the object, the fact, the way
+     out. The masthead stays because a reader who arrives here has been given no other sign of
+     what they have opened, and a bare orb over a refusal is an error page.
+
+     One flex column, centred as a whole. Every earlier attempt pinned the orb to one band and
+     the words to another and then tuned the percentages until the gap looked right — which is
+     only ever right at the aspect it was tuned at, and left the object stranded a screen away
+     from the button everywhere else. Grouping them is what makes the balance automatic. */
+  body.gated footer.chrome, body.gated #textToggle,
+  body.gated #progress, body.gated #sheet,
+  body.gated #work, body.gated #legend, body.gated #narration,
+  body.gated #closer,
+  body.gated #closerBrain, body.gated #colophon { display: none; }
+  /* `display: none` on #work frees the element, not the row it was placed in: narrowing the
+     window mid-piece gates a beat whose plan already asked for two rows, and the second would
+     keep its share of the height. */
+  body.gated .app { grid-template-rows: minmax(0, 1fr); }
+  body.gated #pool { grid-column: 1 / -1; justify-content: center; }
+
+  /* Inside the surface, not looking at it. Every attempt to place a whole cortex on this screen
+     failed the same way: the object is asymmetric, sits a few percent off the origin, and what
+     the camera actually frames is a sphere it never fills — so the composition could be tuned
+     to look centred at one aspect and nowhere else. Past the frame there is no silhouette to
+     centre and no edge to clip. It stops being an object and becomes a ground, and a ground
+     cannot be off centre. setFrameMargin does the work; the slot is simply the viewport. */
+  body.gated #slot { position: fixed; inset: 0; flex: 0 0 auto; }
+  /* Dark, so any frame where the surface has not caught up with a resize is dark too. */
+  body.gated .bk { background: #0a1016; }
+  body.gated #bk-horizon { opacity: 0; }
+
+  #gateScrim { display: none; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background:
+      linear-gradient(180deg, rgba(6,12,22,.4) 0%, rgba(6,12,22,0) 15%),
+      radial-gradient(ellipse 128% 86% at 50% 34%, rgba(6,12,22,.02) 0%,
+        rgba(6,12,22,.46) 58%, rgba(6,12,22,.9) 100%);
+  }
+  body.gated #gateScrim { display: block; }
+
+  /* The masthead is the only thing the page keeps here, and on this ground it has to be near
+     white: at this zoom whatever sits behind it drifts from indigo to pale teal over the cycle,
+     and type that clears only one of those disappears twice a minute. */
+  body.gated #home, body.gated #home:hover { color: rgba(255,255,255,.92);
+    text-shadow: 0 1px 12px rgba(0,0,0,.55); }
+
+  #gate { display: none; flex: 0 0 auto; flex-direction: column; align-items: center;
+    gap: 22px; padding: 0 24px; text-align: center; pointer-events: none; }
+  body.gated #gate { display: flex; }
+  /* Sans and ink, not the narrator's mono green. Everywhere else that voice speaks, the reader
+     has met it first — beat 0 is one word from an object that is obviously talking. The gate is
+     the one screen reached without that introduction, so first person there is a character
+     nobody has been shown, delivered at the moment they are being turned away. This is the
+     page's own voice: a fact, and then the way out. */
+  #gateLine { font-family: var(--sans); font-size: 19px; line-height: 1.45;
+    letter-spacing: -.005em; color: #fff; max-width: 17ch; text-wrap: balance;
+    text-shadow: 0 1px 18px rgba(0,0,0,.45); }
+
+  /* ── the way out ──────────────────────────────────────────────────────────────────
+     Tinted glass rather than the page's outlined accent: on this ground an outline in
+     --accent-ink goes muddy, and the material is the one thing on the screen that can look
+     like it is sitting *on* the surface rather than printed over it.
+     Four layers, which is what the effect is made of: the blur, a saturation lift so colour
+     survives it, a brightness cut so the pill reads darker than what it covers, and a bevel
+     written as inset shadows. What is missing is refraction — the real material bends what
+     sits behind its edge and CSS cannot sample its own backdrop. It matters less than it
+     sounds: the tell of glass is that the thing behind it moves, and this surface drifts the
+     whole time it is on screen. */
+  #gateSend { position: relative; font-family: var(--mono); font-size: 12.5px;
+    letter-spacing: .1em; text-decoration: none; pointer-events: auto;
+    padding: 14px 26px; border-radius: 999px; border: 1px solid transparent;
+    color: #fff; text-shadow: 0 1px 10px rgba(0,0,0,.4);
+    background: linear-gradient(158deg, rgba(22,38,72,.5), rgba(8,14,30,.62) 55%,
+      rgba(16,28,56,.52));
+    -webkit-backdrop-filter: blur(18px) saturate(150%) brightness(.7);
+    backdrop-filter: blur(18px) saturate(150%) brightness(.7);
+    box-shadow:
+      inset 0 1px 0 rgba(198,220,255,.42),     /* the lit top edge */
+      inset 0 -1px 0 rgba(170,200,255,.2),     /* light bounced up off the surface */
+      inset 0 0 22px rgba(110,160,255,.1),     /* the body of the material */
+      0 14px 34px -14px rgba(0,0,0,.75);       /* it sits above, not in */
+  }
+  /* The specular ring, brightest where a lens would catch the light. A gradient border needs
+     the two-layer mask because a border cannot take one itself. */
+  #gateSend::before {
+    content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px;
+    background: linear-gradient(155deg, rgba(205,225,255,.95), rgba(140,175,240,.28) 34%,
+      rgba(120,155,220,.2) 62%, rgba(190,215,255,.8));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
     pointer-events: none;
   }
-  #descend.show { animation: breathe 2.8s ease-in-out infinite; }  /* breathe ONLY once shown */
+  #gateSend:active { background: linear-gradient(158deg, rgba(30,50,92,.6),
+    rgba(12,20,40,.7) 55%, rgba(22,38,72,.6)); }
 
-  /* modal */
-  #modal { position: fixed; inset: 0; display: none; place-items: center; z-index: 10;
-    background: rgba(4,4,7,.78); backdrop-filter: blur(3px); }
-  #modal.show { display: grid; }
-  #modal .card {
-    position: relative; max-width: 480px; margin: 24px;
-    background: linear-gradient(#11111b, #0c0c12); border-radius: 16px; padding: 38px 38px 34px;
-    box-shadow: 0 1px 0 rgba(255,255,255,.05) inset, 0 0 0 1px #1d1d28, 0 24px 60px -20px rgba(0,0,0,.7);
-  }
-  #modal h2 { font-family: var(--display); font-size: 20px; font-weight: 600; margin-bottom: 16px; letter-spacing: .01em; color: #f0f0f5; }
-  #modal p { font-size: 15px; line-height: 1.62; color: #c4c4cf; margin-bottom: 14px; }
-  #modal p .obs { color: var(--accent); }
-  #modal p:last-of-type { color: var(--dim); font-size: 13.5px; margin-bottom: 0; }
-  #modalClose { position: absolute; top: 14px; right: 16px; font-size: 22px; line-height: 1;
-    color: var(--dim); background: none; border: none; cursor: pointer; }
-  #modalClose:hover { color: var(--ink); }
-
-  /* spacer creates the scroll distance; everything visual is fixed on top */
-  #spacer { height: 300vh; pointer-events: none; }   /* 1st viewport = morph, 2nd = the closer + colophon */
-
-  @media (max-width: 720px) {
-    #panel { width: auto; left: 0; right: 0; top: auto; bottom: 0; height: 48vh;
-      border-left: none; border-top: 1px solid #1a1a24; transform: translateY(110%); }
-    #panel.show { transform: translateY(0); }
-    p.note { display: none; }
-
-    /* collapse the door to a ? puck, top-right, clear of the bottom breathing copy */
-    #door {
-      left: auto; right: 16px; top: 16px; bottom: auto;
-      width: 32px; height: 32px; padding: 0; border-radius: 50%;
-      border: 1px solid #3a3a47; display: grid; place-items: center; font-size: 15px;
-    }
-    #door:hover { border-color: var(--ink); }
-    #door .door-label { display: none; }
-    #door::before { content: "?"; }
-  }
-
-  /* suppress flash-of-desktop-content before JS runs on touch devices */
-  @media (pointer: coarse) {
-    #ui { display: none; }
-    #spacer { height: 0; }
-    body { overflow: hidden; }
-  }
-
-  /* touch gate — pointer: coarse gets the orb to play with + email CTA */
-  #touch-gate {
-    display: none;
-    position: fixed; inset: 0; z-index: 5; pointer-events: none;
-    flex-direction: column; align-items: center; justify-content: flex-end;
-    padding-bottom: 13%; gap: 22px; text-align: center;
-  }
-  #touch-gate.show { display: flex; }
-  #gate-line {
-    font-family: var(--mono); font-size: 15.5px; color: var(--ink);
-    letter-spacing: .04em; line-height: 1.5; padding: 0 32px;
-    text-shadow: 0 1px 8px rgba(0,0,0,.65);   /* legible over the bright orb in landscape */
-    pointer-events: none;
-  }
-  #gate-mailto {
-    font-family: var(--mono); font-size: 13px; letter-spacing: .05em;
-    color: var(--ink); text-decoration: none;
-    padding: 13px 28px; border: 1px solid #3a3a47; border-radius: 6px;
-    background: rgba(6,6,9,.72); backdrop-filter: blur(6px);
-    pointer-events: auto;
-  }
-  #gate-mailto:active { border-color: var(--dim); }
-
-  /* accessibility / SEO */
-  .sr-only {
-    position: absolute;
-    width: 1px; height: 1px;
-    padding: 0; margin: -1px;
-    overflow: hidden;
-    clip: rect(0,0,0,0);
-    white-space: nowrap;
-    border-width: 0;
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before { transition-duration: .01ms !important; animation: none !important; }
   }
 </style>
 <script type="importmap">
-{
-  "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
-  }
-}
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
 </script>
-<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
 </head>
-<body>
-  <div class="sr-only">
-  <h1>The Spin Test — Spatial Permutation for Cortical Maps</h1>
-  <p>The spin test (Alexander-Bloch et al., 2018, NeuroImage) is a null model for testing whether two cortical maps are correlated beyond what spatial autocorrelation alone predicts. Random rotations are applied to a spherical representation of the cortical surface, preserving spatial smoothness while destroying anatomical alignment. This interactive demo lets you run 1000 random spins and watch the null distribution build in real time.</p>
-  </div>
-  <div id="bk-dark"></div>
-  <div id="bk-light"></div>
+<body data-plan="overture">
 
-  <div id="touch-gate">
-    <p id="gate-line">this one needs a mouse. the orb's just here to keep you company.</p>
-    <a id="gate-mailto" href="mailto:?subject=The%20Spin%20Test&body=https%3A%2F%2Frh42.github.io%2Fspin-test%2F">send it to yourself →</a>
-  </div>
+<div class="bk"></div>
+<div class="bk" id="bk-horizon"></div>
+<div id="stage"></div>
+<!-- Gate only. Sits between the stage and everything else, which is why it is here rather than
+     inside #gate: it darkens the whole surface, and #gate is a centred block. -->
+<div id="gateScrim"></div>
 
-  <div id="orb-layer"></div>
+<header class="chrome">
+  <a id="home" href="#" title="back to the beginning">the spin test</a>
+  <button id="textToggle">read as text</button>
+</header>
 
-  <div id="ui">
-    <div id="floatR">r&nbsp;=&nbsp;<b>—</b></div>
-    <div id="hint">hello</div>
-    <div id="descend">scroll to continue ↓</div>
-    <button id="door"><span class="door-label">what am I looking at?</span></button>
-    <aside id="panel">
-      <div class="grid2">
-        <div class="readout"><div class="lbl">observed r</div><div class="val warm" id="obsR">—</div></div>
-        <div class="readout"><div class="lbl">p&nbsp;(spin)</div><div class="val" id="pVal">—</div></div>
+<main class="app">
+  <section id="pool">
+    <div id="slot"></div>
+
+    <!-- In the pool, directly under the orb, because on the gate the two of them are one
+         block and a fixed overlay can only ever be near it by arithmetic. See the gate
+         styles: this is what lets the whole group centre itself at any aspect. -->
+    <div id="gate">
+      <p id="gateLine"></p>
+      <a id="gateSend"></a>
+    </div>
+
+    <div id="legend">
+      <span><i class="sw-narrator"></i><b id="legendNarrator"></b></span>
+      <span><i class="sw-partner"></i><b id="legendPartner"></b><em id="legendHeld"></em></span>
+    </div>
+
+    <div id="narration"></div>
+
+    <div id="closer">
+      <div class="evidence">
+        <canvas id="field"></canvas>
+        <p class="lead"><span id="closerLead"></span><a class="cite" id="closerCite"
+          target="_blank" rel="noopener"></a></p>
       </div>
-      <svg id="hist"></svg>
-      <div class="readout"><div class="lbl">spins</div><div class="val" id="nSpin" style="font-size:20px">0</div></div>
-      <p class="note">orange: the correlation you actually measured. blue: a thousand more from spinning one map to random angles. each spin keeps the map's smoothness but breaks its alignment — so the blue cloud is what smoothness alone can fake.</p>
-      <p class="verdict" id="verdict"></p>
-    </aside>
-  </div>
-
-  <div id="intro"></div>
-
-  <div id="toy">
-    <div id="toggles">
-      <button data-mode="real" class="active">real</button>
-      <button data-mode="shuffle">shuffle</button>
-      <button data-mode="spin">spin</button>
+      <div id="thesis"></div>
     </div>
-    <div id="toymsg"></div>
-  </div>
 
-  <div id="arrival">poke me again</div>
+    <!-- The narrator's own voice, parked with the narrator instead of in the page furniture:
+         its line on the figure, then "turn me", then the quips if the reader keeps poking. -->
+    <p class="brainline" id="closerBrain"></p>
 
-  <div id="closer">
-    <!-- <div class="lead">Shuffling the map isn't the same as spinning it. <br>Compare against the wrong kind of fake, and almost anything looks real.</div> -->
-    <div class="stat">Across 7,140 real pairs of brain maps, the naïve test counted <b>5,331</b> as real matches. The spin test counted <b>35</b>. <a class="cite" href="https://doi.org/10.1016/j.neuroimage.2018.05.070" target="_blank" rel="noopener">Alexander-Bloch et al., 2018</a></div>
-    <div class="thesis">Looking alike isn't the same as being linked.</div>
-  </div>
-
-  <div id="quip"></div>
-
-  <div id="bodydown">↓</div>
-
-  <footer id="colophon">
-    <div>Maps are synthetic. The smoothness is not. Rotations uniform on SO(3) — Shoemake 1992.
-    <br>Built by @jelliwolf</div>
-  <div class="more">
-    <a href="https://rh42.github.io/sfc/" target="_blank" rel="noopener">a gentle tour of structure–function coupling</a> · 
-    <a href="https://rh42.github.io/salience/" target="_blank" rel="noopener">which brain region are you?</a>
-  </div>
-  </footer>
-
-  <div id="modal">
-    <div class="card">
-      <button id="modalClose">&times;</button>
-      <h2>What am I looking at?</h2>
-      <p>A brain map, having an identity crisis.</p>
-      <p>Neuroscientists often want to know if two brain features line up. Say, does myelin — the fatty coating that speeds up signals — follow the same pattern as which network a region belongs to? Match or no match, that's worth knowing.</p>
-      <p>Obvious move: correlate the two maps. Done? Not quite. The brain is smooth — nearby regions resemble each other just for being neighbours. So two unrelated maps still overlap, because they're painted on the same smeared-out blob. The brain isn't lying to you. It's just being the brain.</p>
-      <p>So how do you know a match is real? You build a pile of fake ones to beat. Take one map and spin it to a random angle on the sphere — not the brain, just the map, like scribbling "myelin" on a globe and giving it a flick. Now it's misaligned with the other map, but still internally smooth. Measure the correlation. That's one fake match. Do it a thousand times.</p>
-      <p>The <span class="obs">orange line</span> is the correlation you actually measured, properly aligned. Swallowed by the pile? Smoothness was doing the work. Standing clear of it? Something real might be going on.</p>
-      <p>That's the spin test. (Nobody in my lab had heard of it either.)</p>
+    <div id="colophon">
+      <p class="src" id="closerSource"></p>
+      <!-- What lands on the clipboard is the text on screen. The payload is its own element
+           rather than the button's label: it stays selectable, which is the whole of the
+           fallback when the clipboard is refused, and the button keeps a name worth reading
+           aloud instead of three lines of prose. -->
+      <div id="share">
+        <div class="payload"><b id="shareTitle"></b><span id="shareBlurb"></span><span
+          id="shareUrl"></span></div>
+        <button class="act" id="shareAct" type="button"></button>
+      </div>
+      <a id="moreLink" target="_blank" rel="noopener"></a>
     </div>
-  </div>
+  </section>
 
-  <div id="spacer"></div>
-  <script type="module" src="./main.js"></script>
-  <script data-goatcounter="https://spin.goatcounter.com/count"
-        async src="//gc.zgo.at/count.js"></script>
+  <section id="work">
+    <div id="paper"></div>
+    <div id="readout" class="empty">
+      <canvas id="scatter" class="hidden"></canvas>
+      <canvas id="hist" class="hidden"></canvas>
+      <div id="readoutHint"></div>
+    </div>
+    <div id="stat">
+      <div class="label" id="statLabel"></div>
+      <div class="value" id="statValue"></div>
+    </div>
+    <div id="compare"></div>
+  </section>
+</main>
+
+<footer class="chrome">
+  <div id="hint"></div>
+  <div class="controls">
+    <button class="nav" id="back"></button>
+    <button class="nav" id="next"></button>
+  </div>
+</footer>
+
+<div id="progress" role="progressbar" aria-label="progress through the piece">
+  <div id="progressFill"></div>
+</div>
+
+<div id="sheet">
+  <div class="sheet-card">
+    <button id="sheetClose" aria-label="close">×</button>
+    <div id="argument"></div>
+  </div>
+</div>
+
+<script type="module" src="./beats.js"></script>
+<script data-goatcounter="https://spin.goatcounter.com/count"
+      async src="//gc.zgo.at/count.js"></script>
 </body>
 </html>

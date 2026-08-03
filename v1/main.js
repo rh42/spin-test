@@ -247,7 +247,7 @@ function randomQuaternion() {                 // Shoemake (1992): uniform on SO(
 //  BRAIN SURFACE
 // ----------------------------------------------------------------------------
 // real left-hemisphere cortical surface: sphere + inflated, shared faces (1:1).
-const brain = await fetch('./brain-export/brain.json').then(r => r.json());
+const brain = await fetch('../brain-export/brain.json').then(r => r.json());
 const SPH_R = 1.5;
 const bFaces = brain.faces, bSph = brain.sphere, bInf = brain.inflated;
 const faceCount = bFaces.length / 3;

@@ -1,7 +1,20 @@
 notes/
 .claude/
+
+# macOS
 .DS_Store
-node_modules/
+**/.DS_Store
+
+# editors / tooling
 .vscode/
+node_modules/
 *.log
-brain-export/.venv/
+
+# python
+.venv/
+**/.venv*/
+__pycache__/
+*.pyc
+
+# gate mockup — a workbench page, not part of the site
+og.html

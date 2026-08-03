@@ -1,0 +1,6 @@
+{
+  "name": "spin-test",
+  "private": true,
+  "type": "module",
+  "description": "Marks the sources as ES modules so field.js can be imported and checked in node. No build step, no dependencies."
+}
