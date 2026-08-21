@@ -100,8 +100,8 @@ export const beats = [
       'myelin, say, how thickly wrapped each bit of me is.',
       // The one word a reader can be stopped by, and the argument rests on it. The tooltip
       // is a definition, not a joke: it is needed here, four beats before the term works.
-      'notice how neighbors look alike? that’s not me being interesting. that’s me being '
-        + '<em class="gloss" tabindex="0" data-tip="Smooth: things close together on the cortex tend to be alike, so any patch resembles its neighbors whether or not anything interesting is going on.">smooth</em>.',
+      'notice how neighbors look alike? that’s what '
+        + '<em class="gloss" tabindex="0" data-tip="Smooth: things close together on the cortex tend to be alike, so any patch resembles its neighbors whether or not anything interesting is going on.">smooth</em> means.',
     ],
   },
   { // 2 · the second map. Still full frame — there is nothing to analyse yet, so the work
@@ -151,9 +151,9 @@ export const beats = [
     brain: [
       'hang on. look at me.',
       'no cortex has ever looked like that. i’m static. i’m television snow.',
-      'i cleared a bar that no brain could get over. of course i cleared it.',
+      'i cleared a bar that snow set. of course i cleared it.',
     ],
-    paper: 'The <var>p</var>-value was computed correctly. The null was wrong. Every value that made it significant came from destroying the one thing real maps never lose.',
+    paper: 'The <var>p</var>-value was computed correctly. The null was wrong. Every value that made it significant came from destroying the one thing real maps never lose: smoothness.',
     truth: 'These two maps were built to have nothing in common: same smoothness, independent amplitudes, no relationship at all. The naive test called them a match.',
   },
   { // 6 · a fair fake. both go back to the sphere, because that is where the turning
@@ -180,7 +180,7 @@ export const beats = [
     paper: '<var>p</var> = {pSpin}',
     after: [
       '{observed} lands in the crowd.',
-      'we look alike because i’m smooth. not because we’re related.',
+      'we look alike because i’m smooth.',
     ],
     browse: ['every bar in there is a handful of me, facing some other way. have a look.'],
   },

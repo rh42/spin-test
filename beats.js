@@ -528,7 +528,6 @@ async function probeSweep(tok, dur = 4200) {
 const BEATS = [
   async tok => { // 0 · the object
     stage.setPaired(false); stage.showPartner(false); stage.setCortexTarget(0);
-    stage.setAmbient(true); stage.setDragEnabled(false);
     await say(C[0].brain, tok);
   },
 
@@ -831,7 +830,6 @@ stage.onProbe(d => { if (beat === 3) moveProbe(d); });
 
 let pokes = 0, quipTimer = null;
 stage.onPoke(() => {
-  if (beat === 0) { advance(); return; }
   // The poster only: on the figure the brain is delivering its line, and a quip there
   // interrupts the argument with a joke.
   if (beat !== LAST) return;
