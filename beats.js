@@ -226,8 +226,8 @@ function closer(mode, o = {}) {
   if (mode !== 'figure') $('field').classList.remove('show');
 }
 
-// The narrator's line, hung under the narrator itself. Everything the brain says on the
-// closing beats goes through here, so the quips land where its other lines did.
+// The narrator's line, hung under the narrator itself. On the poster the quips and the
+// sick lines are all the brain says, and they go through here.
 // Distinct from `say` above, which feeds #narration under the orb on beats 0-8.
 function aside(text) {
   $('closerBrain').textContent = text || '';
@@ -730,7 +730,6 @@ const BEATS = [
       clause(C[9].naiveClause, NAIVE);
       $('closerLead').innerHTML += fill(C[9].spinClause, { count: SPIN_MATCHES.toLocaleString() });
       $('closerCite').classList.add('show');
-      aside(C[9].brain[0]);
       return;
     }
 
@@ -760,11 +759,6 @@ const BEATS = [
     });
     if (!live(tok)) throw new Cancelled();
     $('closerCite').classList.add('show');
-
-    // The brain gets the second-to-last word, from its own corner, so the line is obviously
-    // the thumbnail speaking and not a caption on the figure.
-    await gate(tok);
-    aside(C[9].brain[0]);
   },
 
   async (tok, { back }) => { // 10 · the poster
@@ -830,8 +824,7 @@ stage.onProbe(d => { if (beat === 3) moveProbe(d); });
 
 let pokes = 0, quipTimer = null;
 stage.onPoke(() => {
-  // The poster only: on the figure the brain is delivering its line, and a quip there
-  // interrupts the argument with a joke.
+  // The poster only: on the figure a quip would interrupt the argument with a joke.
   if (beat !== LAST) return;
   flash(quips[Math.min(pokes++, quips.length - 1)]);
 });

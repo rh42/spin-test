@@ -203,7 +203,6 @@ export const beats = [
     spinClause: ' The spin test counted <b>{count}</b>.',
     cite: 'Alexander-Bloch et al., 2018',
     citeHref: 'https://doi.org/10.1016/j.neuroimage.2018.05.070',
-    brain: ['you just did that. twice. on one pair.'],
   },
   { // 10 · the poster
     plan: 'overture', tint: 1,
